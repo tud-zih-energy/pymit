@@ -15,9 +15,9 @@ Details can be found in the following paper:
 > Gocht, A.; Lehmann, C. & Schöne, R.  
 > A New Approach for Automated Feature Selection  
 > 2018 IEEE International Conference on Big Data (Big Data), 2018 , 4915-4920  
-> [DOI: 10.1109/BigData.2018.8622548](http://doi.org/10.1109/BigData.2018.8622548) or [OA](http://nbn-resolving.de/urn:nbn:de:bsz:14-qucosa2-337156)
+> [DOI: 10.1109/BigData.2018.8622548](http://doi.org/10.1109/BigData.2018.8622548) or [OpenAccess](http://nbn-resolving.de/urn:nbn:de:bsz:14-qucosa2-337156)
 
-For an implementation of the HJMI, please have a loot to  `test/hjmi.py`. Please note, that the algorithm is slightly modified, to avoid a division by zero.
+For an implementation of the HJMI, please have a look to  `test/hjmi.py`. Please note, that the algorithm is slightly modified, to avoid a division by zero.
 
 ### JMI feature selection
 
@@ -26,13 +26,13 @@ The Joint Mutual Information (JMI) feature selection mechanism is based on the w
 > Conditional Likelihood Maximisation: A Unifying Framework for Information Theoretic Feature Selection  
 > G. Brown, A. Pocock, M.-J. Zhao, M. Lujan  
 > Journal of Machine Learning Research, 13:27-66 (2012)  
-> [ACM ID: 2188387](http://dl.acm.org/citation.cfm?id=2188385.2188387) or [OA](http://jmlr.csail.mit.edu/papers/v13/brown12a.html)
+> [ACM ID: 2188387](http://dl.acm.org/citation.cfm?id=2188385.2188387) or [OpenAccess](http://jmlr.csail.mit.edu/papers/v13/brown12a.html)
 
 > Yang, H. H. & Moody, J.  
 > Data visualization and feature selection: New algorithms for nongaussian data  
 > Advances in Neural Information Processing Systems, 2000 , 687-693
 
-For an implementation of the JMI, please have a loot to  `test/jmi.py`.
+For an implementation of the JMI, please have a look to  `test/jmi.py`.
 
 ## Comparing to MATLAB(R)
 
