@@ -40,9 +40,10 @@ def test_hjmi(madelon):
             hjmi = j_h
             selected_features.append(f)
         else:
-            break    
+            break
 
     assert np.array_equal(expected_features, selected_features)
+
 
 def test_jmi(madelon):
     data, labels = madelon
@@ -72,7 +73,7 @@ def test_jmi(madelon):
             for X_j in selected_features:
                 sum1 = pymit.I(data_discrete[:, X_j], labels, bins=[bins, 2])
                 sum2 = pymit.I_cond(data_discrete[:, X_k], labels, data_discrete[:, X_j], bins=[bins, 2, bins])
-                jmi[X_k] += sum1 + sum2 
+                jmi[X_k] += sum1 + sum2
         f = jmi.argmax()
         selected_features.append(f)
 
