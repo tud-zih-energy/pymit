@@ -12,7 +12,7 @@ def test_histogram_a_ndarray():
     assert bin_edges_np.dtype == bin_edges_mp.dtype
     assert bin_edges_np.ndim == bin_edges_mp.ndim
     assert bin_edges_np.shape == bin_edges_mp.shape
-    assert np.array_equal(bin_edges_np, bin_edges_mp)
+    assert np.allclose(bin_edges_np, bin_edges_mp)
     assert hist_np.dtype == hist_mp.dtype
     assert hist_np.ndim == hist_mp.ndim
     assert hist_np.shape == hist_mp.shape
@@ -27,7 +27,7 @@ def test_histogram_a_list():
     assert bin_edges_np.dtype == bin_edges_mp.dtype
     assert bin_edges_np.ndim == bin_edges_mp.ndim
     assert bin_edges_np.shape == bin_edges_mp.shape
-    assert np.array_equal(bin_edges_np, bin_edges_mp)
+    assert np.allclose(bin_edges_np, bin_edges_mp)
     assert hist_np.dtype == hist_mp.dtype
     assert hist_np.ndim == hist_mp.ndim
     assert hist_np.shape == hist_mp.shape
@@ -44,7 +44,7 @@ def test_histogram_bins_scalar(bins):
     assert bin_edges_np.dtype == bin_edges_mp.dtype
     assert bin_edges_np.ndim == bin_edges_mp.ndim
     assert bin_edges_np.shape == bin_edges_mp.shape
-    assert np.array_equal(bin_edges_np, bin_edges_mp)
+    assert np.allclose(bin_edges_np, bin_edges_mp)
     assert hist_np.dtype == hist_mp.dtype
     assert hist_np.ndim == hist_mp.ndim
     assert hist_np.shape == hist_mp.shape
@@ -70,12 +70,12 @@ def test_histogramdd_sample_ndarray():
     assert all(n.dtype == m.dtype for n, m in zip(edges_np, edges_mp))
     assert all(n.ndim == m.ndim for n, m in zip(edges_np, edges_mp))
     assert all(n.shape == m.shape for n, m in zip(edges_np, edges_mp))
-    assert all(np.array_equal(n, m) for n, m in zip(edges_np, edges_mp))
+    assert all(np.allclose(n, m) for n, m in zip(edges_np, edges_mp))
     assert H_np.dtype == H_mp.dtype
     assert H_np.ndim == H_mp.ndim
     assert H_np.shape == H_mp.shape
     assert H_np.sum() == H_mp.sum()
-    assert np.array_equal(H_np,  H_mp)
+    assert np.allclose(H_np,  H_mp)
 
 
 @pytest.mark.xfail
@@ -95,12 +95,12 @@ def test_histogramdd_bins_scalar(bins):
     assert all(n.dtype == m.dtype for n, m in zip(edges_np, edges_mp))
     assert all(n.ndim == m.ndim for n, m in zip(edges_np, edges_mp))
     assert all(n.shape == m.shape for n, m in zip(edges_np, edges_mp))
-    assert all(np.array_equal(n, m) for n, m in zip(edges_np, edges_mp))
+    assert all(np.allclose(n, m) for n, m in zip(edges_np, edges_mp))
     assert H_np.dtype == H_mp.dtype
     assert H_np.ndim == H_mp.ndim
     assert H_np.shape == H_mp.shape
     assert H_np.sum() == H_mp.sum()
-    assert np.array_equal(H_np,  H_mp)
+    assert np.allclose(H_np,  H_mp)
 
 
 @settings(deadline=None)
@@ -115,12 +115,12 @@ def test_histogramdd_bins_array_of_scalars(bins):
     assert all(n.dtype == m.dtype for n, m in zip(edges_np, edges_mp))
     assert all(n.ndim == m.ndim for n, m in zip(edges_np, edges_mp))
     assert all(n.shape == m.shape for n, m in zip(edges_np, edges_mp))
-    assert all(np.array_equal(n, m) for n, m in zip(edges_np, edges_mp))
+    assert all(np.allclose(n, m) for n, m in zip(edges_np, edges_mp))
     assert H_np.dtype == H_mp.dtype
     assert H_np.ndim == H_mp.ndim
     assert H_np.shape == H_mp.shape
     assert H_np.sum() == H_mp.sum()
-    assert np.array_equal(H_np,  H_mp)
+    assert np.allclose(H_np,  H_mp)
 
 
 @pytest.mark.xfail
