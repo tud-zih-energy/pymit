@@ -1,8 +1,6 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include <memory>
-#include <vector>
 
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
@@ -49,6 +47,7 @@ histogram(PyObject *self, PyObject *args, PyObject *kwds) {
     double *bin_edges_data = nullptr;
     int64_t *hist_data = nullptr;
     double hist_bin_width;
+    int64_t *bin_priv = nullptr;
 
     /* argument parsing */
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|O(ff)pOp", kwlist, &a, &bins, &range_lower, &range_upper, &normed, &weights, &density))
@@ -118,13 +117,12 @@ histogram(PyObject *self, PyObject *args, PyObject *kwds) {
         }
     } else
     {
-        #pragma omp parallel for simd reduction(min: a_min) reduction(max: a_max)
+        #pragma omp parallel for simd aligned(a_data) reduction(min: a_min) reduction(max: a_max)
         for (npy_intp i = 0; i < a_length; ++i)
         {
-            if (a_data[i] < a_min)
-                a_min = a_data[i];
-            if (a_data[i] > a_max)
-                a_max = a_data[i];
+            double const tmp = a_data[i];
+            a_min = (tmp < a_min) ? tmp : a_min;
+            a_max = (tmp > a_max) ? tmp : a_max;
         }
         hist_bin_width = (a_max-a_min)/hist_dims;
 
@@ -141,16 +139,14 @@ histogram(PyObject *self, PyObject *args, PyObject *kwds) {
         goto fail;
     } else
     {
-        std::vector< int64_t > bin_priv(hist_dims);
-        #pragma omp declare reduction(vec_int64_plus : std::vector< int64_t >: \
-                                      std::transform(omp_out.begin(), omp_out.end(), omp_in.begin(), omp_out.begin(), std::plus< int64_t >())) \
-                                      initializer(omp_priv = decltype(omp_orig)(omp_orig.size()))
-        #pragma omp parallel for simd reduction(vec_int64_plus: bin_priv)
-        for (npy_intp i = 0; i < a_length; ++i)
-        {
-            auto bin = static_cast< npy_intp >((a_data[i] - a_min) / hist_bin_width);
-            bin = std::min(bin, hist_dims-1);
-            ++bin_priv[bin];
+        bin_priv = new int64_t[hist_dims];
+        for (npy_intp i = 0; i < hist_dims; ++i)
+            bin_priv[i] = 0;
+        #pragma omp parallel for simd aligned(a_data) reduction(+: bin_priv[0:hist_dims])
+        for (npy_intp i = 0; i < a_length; ++i) {
+            auto bin = static_cast< int64_t >((a_data[i] - a_min) / hist_bin_width);
+            auto idx = (bin < hist_dims-1) ? bin : hist_dims-1;
+            ++bin_priv[idx];
         }
         for (npy_intp i = 0; i < hist_dims; ++i)
             hist_data[i] = bin_priv[i];
@@ -159,11 +155,13 @@ histogram(PyObject *self, PyObject *args, PyObject *kwds) {
     goto success;
 
 success:
+    if (bin_priv != nullptr) { delete[] bin_priv; bin_priv = nullptr; }
     Py_XDECREF(bins_np);
     Py_DECREF(a_np);
     return Py_BuildValue("NN", hist, bin_edges);
 
 fail:
+    if (bin_priv != nullptr) { delete[] bin_priv; bin_priv = nullptr; }
     Py_XDECREF(bins_np);
     Py_XDECREF(a_np);
     Py_XDECREF(bin_edges);
@@ -201,19 +199,20 @@ histogramdd(PyObject *self, PyObject *args, PyObject *kwds) {
     npy_intp sample_N;
     npy_intp sample_D;
     npy_intp sample_length;
-    std::unique_ptr< npy_intp[] > H_dims;
+    npy_intp *H_dims = nullptr;
     npy_intp bins_;
     PyArrayObject *bins_np = nullptr;
     double *bins_data = nullptr;
     bool bin_edges_arg = false;
-    std::vector< double > sample_min;
-    std::vector< double > sample_max;
-    std::unique_ptr< PyObject*[] > bin_edges_np = nullptr;
+    double *sample_min = nullptr;
+    double *sample_max = nullptr;
+    PyObject **bin_edges_np = nullptr;
     double *sample_data = nullptr;
-    std::unique_ptr< double[] > hist_bin_width = nullptr;
+    double *hist_bin_width = nullptr;
     double *bin_edges_data = nullptr;
     npy_intp bin_edges_dims;
-    double *H_data;
+    double *H_data = nullptr;
+    int64_t *bin_priv = nullptr;
 
     /* argument parsing */
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|OOpOp", kwlist, &sample, &bins, &range, &normed, &weights, &density))
@@ -241,7 +240,7 @@ histogramdd(PyObject *self, PyObject *args, PyObject *kwds) {
     }
     sample_N = PyArray_DIM(sample_np, 0);
     sample_D = PyArray_DIM(sample_np, 1);
-    H_dims = std::make_unique< npy_intp[] >(sample_D);
+    H_dims = new npy_intp[sample_D];
 
     /* process `bins` */
     if (bins)
@@ -296,13 +295,13 @@ histogramdd(PyObject *self, PyObject *args, PyObject *kwds) {
     }
 
     /* allocate output arrays */
-    H = reinterpret_cast< PyArrayObject* >(PyArray_ZEROS(sample_D, H_dims.get(), NPY_DOUBLE, 0));
+    H = reinterpret_cast< PyArrayObject* >(PyArray_ZEROS(sample_D, H_dims, NPY_DOUBLE, 0));
     if (!H)
         goto fail;
     edges = PyList_New(sample_D);
     if (!edges)
         goto fail;
-    bin_edges_np = std::make_unique< PyObject*[] >(sample_D);
+    bin_edges_np = new PyObject*[sample_D];
     for (npy_intp i = 0; i < sample_D; ++i)
     {
         H_dims[i] += 1;
@@ -324,24 +323,22 @@ histogramdd(PyObject *self, PyObject *args, PyObject *kwds) {
         goto fail;
     } else
     {
-        sample_min = std::vector< double >(sample_D);
-        sample_max = std::vector< double >(sample_D);
-        #pragma omp declare reduction(vec_double_min : std::vector< double >: \
-                                      std::transform(omp_out.begin(), omp_out.end(), omp_in.begin(), omp_out.begin(), [](double a, double b) { return (a < b) ? a : b; })) \
-                                      initializer(omp_priv = decltype(omp_orig)(omp_orig.size()))
-        #pragma omp declare reduction(vec_double_max : std::vector< double >: \
-                                      std::transform(omp_out.begin(), omp_out.end(), omp_in.begin(), omp_out.begin(), [](double a, double b) { return (a > b) ? a : b; })) \
-                                      initializer(omp_priv = decltype(omp_orig)(omp_orig.size()))
-        #pragma omp parallel for simd reduction(vec_double_min: sample_min) reduction(vec_double_max: sample_max)
+        sample_min = new double[sample_D];
+        sample_max = new double[sample_D];
+        for (npy_intp i = 0; i < sample_D; ++i)
+        {
+            sample_min[i] = std::numeric_limits< double >::infinity();
+            sample_max[i] = -std::numeric_limits< double >::infinity();
+        }
+        #pragma omp parallel for simd aligned(sample_data) reduction(min: sample_min[0:sample_D]) reduction(max: sample_max[0:sample_D])
         for (npy_intp i = 0; i < sample_length; ++i)
         {
-            auto dim = i % sample_D;
-            if (sample_data[i] < sample_min[dim])
-                sample_min[dim] = sample_data[i];
-            if (sample_data[i] > sample_max[dim])
-                sample_max[dim] = sample_data[i];
+            auto const dim = i % sample_D;
+            double const tmp = sample_data[i];
+            sample_min[dim] = (tmp < sample_min[dim]) ? tmp : sample_min[dim];
+            sample_max[dim] = (tmp > sample_max[dim]) ? tmp : sample_max[dim];
         }
-        hist_bin_width = std::make_unique< double[] >(sample_D);
+        hist_bin_width = new double[sample_D];
         for (npy_intp i = 0; i < sample_D; ++i)
         {
             hist_bin_width[i] = (sample_max[i]-sample_min[i])/H_dims[i];
@@ -365,37 +362,47 @@ histogramdd(PyObject *self, PyObject *args, PyObject *kwds) {
     } else
     {
         auto H_length = PyArray_SIZE(H);
-        std::vector< int64_t > bin_priv(H_length);
-        #pragma omp declare reduction(vec_int64_plus : std::vector< int64_t >: \
-                                      std::transform(omp_out.begin(), omp_out.end(), omp_in.begin(), omp_out.begin(), std::plus< int64_t >())) \
-                                      initializer(omp_priv = decltype(omp_orig)(omp_orig.size()))
-        #pragma omp parallel for simd reduction(vec_int64_plus: bin_priv)
-        for (npy_intp i = 0; i < sample_length; i += sample_D)
-        {
-            npy_intp bin = 0;
-            for (npy_int j = 0; j < sample_D; ++j)
+        bin_priv = new int64_t[H_length];
+        for (npy_intp i = 0; i < H_length; ++i)
+            bin_priv[i] = 0;
+        #pragma omp parallel for simd aligned(sample_data) reduction(+: bin_priv[0:H_length])
+        for (npy_intp i = 0; i < H_length; i += sample_D) {
+            int64_t bin = 0;
+            for (npy_intp dim = 0; dim < sample_D; ++dim)
             {
-                auto bin_ = static_cast< npy_intp >((sample_data[i+j] - sample_min[j]) / hist_bin_width[j]);
-                bin_ = std::min(bin_, H_dims[j]-1);
+                auto bin_ = static_cast< int64_t >((sample_data[i+dim] - sample_min[dim]) / hist_bin_width[dim]);
+                bin_ = (bin_ < H_dims[dim]-1) ? bin_ : H_dims[dim]-1;
                 bin += bin_;
-                if (j != sample_D - 1)
-                    bin *= H_dims[j+1];
+                if (dim != sample_D - 1)
+                    bin *= H_dims[dim+1];
             }
             ++bin_priv[bin];
         }
-        for(npy_intp i = 0; i < H_length; ++i)
-            H_data[i] = static_cast< double >(bin_priv[i]);
+        for (npy_intp i = 0; i < H_length; ++i)
+            H_data[i] = bin_priv[i];
     }
 
     goto success;
 
 success:
+    if (bin_priv != nullptr) { delete[] bin_priv; bin_priv = nullptr; }
+    if (hist_bin_width != nullptr) { delete[] hist_bin_width; hist_bin_width = nullptr; }
+    if (bin_edges_np != nullptr) { delete[] bin_edges_np; bin_edges_np = nullptr; }
+    if (sample_max != nullptr) { delete[] sample_max; sample_max = nullptr; }
+    if (sample_min != nullptr) { delete[] sample_min; sample_min = nullptr; }
     Py_XDECREF(bins_np);
+    if (H_dims != nullptr) { delete[] H_dims; H_dims = nullptr; }
     Py_DECREF(sample_np);
     return Py_BuildValue("NN", H, edges);
 
 fail:
+    if (bin_priv != nullptr) { delete[] bin_priv; bin_priv = nullptr; }
+    if (hist_bin_width != nullptr) { delete[] hist_bin_width; hist_bin_width = nullptr; }
+    if (bin_edges_np != nullptr) { delete[] bin_edges_np; bin_edges_np = nullptr; }
+    if (sample_max != nullptr) { delete[] sample_max; sample_max = nullptr; }
+    if (sample_min != nullptr) { delete[] sample_min; sample_min = nullptr; }
     Py_XDECREF(bins_np);
+    if (H_dims != nullptr) { delete[] H_dims; H_dims = nullptr; }
     Py_XDECREF(sample_np);
     Py_XDECREF(edges);
     Py_XDECREF(H);

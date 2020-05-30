@@ -6,6 +6,7 @@ module = Extension('mephisto',
                    sources=['mephisto/mephisto.cpp'],
                    include_dirs=[np.get_include()],
                    extra_compile_args=['-O3', '-march=native', '-fopenmp', '-fPIC'],
+                   #extra_compile_args=['-O0', '-g', '-march=native', '-fopenmp', '-fPIC'],
                    extra_link_args=['-lgomp'],
                    optional=False)
 
