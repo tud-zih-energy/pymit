@@ -10,8 +10,6 @@ module = Extension('mephisto',
                    extra_link_args=['-lgomp'],
                    optional=False)
 
-tests_require = ['pytest', 'hypothesis', 'requests']
-
 setup(
     name='pymit',
     version='0.3',
@@ -19,10 +17,5 @@ setup(
     author='Andreas Gocht, Fabian Koller',
     author_email='andreas.gocht@tu-dresden.de, fabian.koller@mailbox.tu-dresden.de',
     packages=find_packages(),
-    ext_modules=[module],
-    #install_requires=['numpy'],
-    tests_require=tests_require,
-    extras_require={
-        'tests': tests_require,
-    }
+    ext_modules=[module]
 )
