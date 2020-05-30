@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from hypothesis import given, settings, strategies as st
+from hypothesis import assume, given, settings, strategies as st
 
 import mephisto as mp
 
@@ -35,7 +35,7 @@ def test_histogram_a_list():
     assert np.array_equal(hist_np, hist_mp)
 
 
-@given(st.integers(min_value=1, max_value=16))
+@given(st.integers(min_value=1, max_value=2**21))
 def test_histogram_bins_scalar(bins):
     rng = np.random.RandomState(42)
     a = rng.normal(size=1000)
@@ -103,11 +103,12 @@ def test_histogramdd_bins_scalar(bins):
     assert np.allclose(H_np,  H_mp)
 
 
-@settings(deadline=None)
+@settings(deadline=None, database=None)
 @given(st.lists(st.integers(min_value=1, max_value=8), min_size=2, max_size=8))
 def test_histogramdd_bins_array_of_scalars(bins):
+    assume(np.prod(bins) * 8 < 1024 * 1024 * 128)  # don't stress RAM too much
     rng = np.random.RandomState(42)
-    sample = rng.randn(100//len(bins), len(bins))
+    sample = rng.randn(1024*1024*16//len(bins), len(bins))
     H_np, edges_np = np.histogramdd(sample, bins)
     H_mp, edges_mp = mp.histogramdd(sample, bins)
     assert type(edges_np) == type(edges_mp)

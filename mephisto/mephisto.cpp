@@ -139,17 +139,29 @@ histogram(PyObject *self, PyObject *args, PyObject *kwds) {
         goto fail;
     } else
     {
-        bin_priv = new int64_t[hist_dims];
-        for (npy_intp i = 0; i < hist_dims; ++i)
-            bin_priv[i] = 0;
-        #pragma omp parallel for simd aligned(a_data) reduction(+: bin_priv[0:hist_dims])
-        for (npy_intp i = 0; i < a_length; ++i) {
-            auto bin = static_cast< int64_t >((a_data[i] - a_min) / hist_bin_width);
-            auto idx = (bin < hist_dims-1) ? bin : hist_dims-1;
-            ++bin_priv[idx];
+        if (PyArray_NBYTES(hist) < (512 * 1024)) // histogram easily fits in CPU caches - use private histograms
+        {
+            bin_priv = new int64_t[hist_dims];
+            for (npy_intp i = 0; i < hist_dims; ++i)
+                bin_priv[i] = 0;
+            #pragma omp parallel for simd aligned(a_data) reduction(+: bin_priv[0:hist_dims])
+            for (npy_intp i = 0; i < a_length; ++i) {
+                auto bin = static_cast< npy_intp >((a_data[i] - a_min) / hist_bin_width);
+                auto idx = (bin < hist_dims-1) ? bin : hist_dims-1;
+                ++bin_priv[idx];
+            }
+            for (npy_intp i = 0; i < hist_dims; ++i)
+                hist_data[i] = bin_priv[i];
+        } else // histogram likely spills to higher level caches or RAM - use shared histogram
+        {
+            #pragma omp parallel for
+            for (npy_intp i = 0; i < a_length; ++i) {
+                auto bin = static_cast< npy_intp >((a_data[i] - a_min) / hist_bin_width);
+                auto idx = (bin < hist_dims-1) ? bin : hist_dims-1;
+                #pragma omp atomic
+                ++hist_data[idx];
+            }
         }
-        for (npy_intp i = 0; i < hist_dims; ++i)
-            hist_data[i] = bin_priv[i];
     }
 
     goto success;
@@ -361,25 +373,46 @@ histogramdd(PyObject *self, PyObject *args, PyObject *kwds) {
         goto fail;
     } else
     {
-        auto H_length = PyArray_SIZE(H);
-        bin_priv = new int64_t[H_length];
-        for (npy_intp i = 0; i < H_length; ++i)
-            bin_priv[i] = 0;
-        #pragma omp parallel for simd aligned(sample_data) reduction(+: bin_priv[0:H_length])
-        for (npy_intp i = 0; i < H_length; i += sample_D) {
-            int64_t bin = 0;
-            for (npy_intp dim = 0; dim < sample_D; ++dim)
+        if (PyArray_NBYTES(H) < (512 * 1024)) // histogram easily fits in CPU caches - use private histograms
+        {
+            auto H_length = PyArray_SIZE(H);
+            bin_priv = new int64_t[H_length];
+            for (npy_intp i = 0; i < H_length; ++i)
+                bin_priv[i] = 0;
+            #pragma omp parallel for simd aligned(sample_data) reduction(+: bin_priv[0:H_length])
+            for (npy_intp i = 0; i < sample_length; i += sample_D)
             {
-                auto bin_ = static_cast< int64_t >((sample_data[i+dim] - sample_min[dim]) / hist_bin_width[dim]);
-                bin_ = (bin_ < H_dims[dim]-1) ? bin_ : H_dims[dim]-1;
-                bin += bin_;
-                if (dim != sample_D - 1)
-                    bin *= H_dims[dim+1];
+                npy_intp idx = 0;
+                for (npy_int dim = 0; dim < sample_D; ++dim)
+                {
+                    auto bin = static_cast< npy_intp >((sample_data[i+dim] - sample_min[dim]) / hist_bin_width[dim]);
+                    bin = (bin < H_dims[dim]-1) ? bin : H_dims[dim]-1;
+                    idx += bin;
+                    if (dim != sample_D - 1)
+                        idx *= H_dims[dim+1];
+                }
+                ++bin_priv[idx];
             }
-            ++bin_priv[bin];
+            for (npy_intp i = 0; i < H_length; ++i)
+                H_data[i] = bin_priv[i];
+        } else // histogram likely spills to higher level caches or RAM - use shared histogram
+        {
+            #pragma omp parallel for
+            for (npy_intp i = 0; i < sample_length; i += sample_D)
+            {
+                npy_intp idx = 0;
+                for (npy_int dim = 0; dim < sample_D; ++dim)
+                {
+                    auto bin = static_cast< npy_intp >((sample_data[i+dim] - sample_min[dim]) / hist_bin_width[dim]);
+                    bin = (bin < H_dims[dim]-1) ? bin : H_dims[dim]-1;
+                    idx += bin;
+                    if (dim != sample_D - 1)
+                        idx *= H_dims[dim+1];
+                }
+                #pragma omp atomic
+                ++H_data[idx];
+            }
         }
-        for (npy_intp i = 0; i < H_length; ++i)
-            H_data[i] = bin_priv[i];
     }
 
     goto success;
