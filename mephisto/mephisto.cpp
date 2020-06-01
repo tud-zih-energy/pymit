@@ -1,4 +1,3 @@
-#include <algorithm>
 #include <cmath>
 #include <limits>
 
@@ -6,6 +5,12 @@
 #include <Python.h>
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/arrayobject.h>
+
+bool
+histogram_bin_edges_impl(
+    PyArrayObject* a, PyObject* bins, double range_lower, double range_upper, PyArrayObject* weights,
+    PyArrayObject** bin_edges, bool* bin_edges_arg
+);
 
 /**
  * @brief Compute the histogram of a set of data.
@@ -35,18 +40,16 @@ histogram(PyObject *self, PyObject *args, PyObject *kwds) {
 
     /* helpers */
     PyArrayObject *a_np = nullptr;
-    PyArrayObject *bins_np = nullptr;
-    bool bin_edges_arg = false;
-    npy_intp hist_dims = 0;
-    npy_intp bin_edges_dims = 0;
     PyArrayObject *weights_np = nullptr;
+    bool bin_edges_arg;
+    bool status;
+    double *bin_edges_data = nullptr;
+    npy_intp hist_length;
+    double a_min;
+    double hist_bin_width;
     double *a_data = nullptr;
     npy_intp a_length;
-    double a_min = std::numeric_limits< double >::infinity();
-    double a_max = -std::numeric_limits< double >::infinity();
-    double *bin_edges_data = nullptr;
     int64_t *hist_data = nullptr;
-    double hist_bin_width;
     int64_t *bin_priv = nullptr;
 
     /* argument parsing */
@@ -64,38 +67,20 @@ histogram(PyObject *self, PyObject *args, PyObject *kwds) {
     if (!a_np)
         goto fail;
 
-    /* process `bins` */
-    if (bins)
-    {
-        if (PyArray_IsIntegerScalar(bins))
-            hist_dims = PyLong_AsLong(bins);
-        else
-        {
-            bins_np = reinterpret_cast< PyArrayObject* >(PyArray_FROM_OT(bins, NPY_DOUBLE));
-            if (!bins_np)
-                goto fail;
-
-            if (PyArray_NDIM(bins_np) == 1)
-            {
-                bin_edges_arg = true;
-                hist_dims = PyArray_DIM(bins_np, 0) - 1;
-            }
-            else
-            {
-                PyErr_SetString(PyExc_ValueError, "`bins` must be int or 1d array");
-                goto fail;
-            }
-        }
-    } else
-        hist_dims = 10;
-    bin_edges_dims = hist_dims + 1;
-
-    /* allocate output arrays */
-    hist = reinterpret_cast< PyArrayObject* >(PyArray_ZEROS(1, &hist_dims, weights ? PyArray_TYPE(weights_np) : NPY_INT64, 0));
-    if (!hist)
+    status = histogram_bin_edges_impl(a_np, bins, range_lower, range_upper, weights_np,
+                                      &bin_edges, &bin_edges_arg);
+    if (!status)
         goto fail;
-    bin_edges = reinterpret_cast< PyArrayObject* >(PyArray_SimpleNew(1, &bin_edges_dims, NPY_DOUBLE));
-    if (!bin_edges)
+    bin_edges_data = (double *)PyArray_DATA(bin_edges);
+    if (!bin_edges_data)
+        goto fail;
+    hist_length = PyArray_SIZE(bin_edges) - 1;
+    a_min = bin_edges_data[0];
+    hist_bin_width = (bin_edges_data[hist_length] - bin_edges_data[0]) / hist_length;
+
+    /* allocate output array */
+    hist = reinterpret_cast< PyArrayObject* >(PyArray_ZEROS(1, &hist_length, weights ? PyArray_TYPE(weights_np) : NPY_INT64, 0));
+    if (!hist)
         goto fail;
 
     /* workwörk */
@@ -103,34 +88,6 @@ histogram(PyObject *self, PyObject *args, PyObject *kwds) {
     if (!a_data)
         goto fail;
     a_length = PyArray_SIZE(a_np);
-
-    bin_edges_data = (double *)PyArray_DATA(bin_edges);
-    if (!bin_edges_data)
-        goto fail;
-
-    if (bin_edges_arg)
-    {
-        if (PyArray_CopyInto(bin_edges, bins_np) == -1)
-        {
-            PyErr_SetString(PyExc_RuntimeError, "Failed to copy bin edges");
-            goto fail;
-        }
-    } else
-    {
-        #pragma omp parallel for simd aligned(a_data) reduction(min: a_min) reduction(max: a_max)
-        for (npy_intp i = 0; i < a_length; ++i)
-        {
-            double const tmp = a_data[i];
-            a_min = (tmp < a_min) ? tmp : a_min;
-            a_max = (tmp > a_max) ? tmp : a_max;
-        }
-        hist_bin_width = (a_max-a_min)/hist_dims;
-
-        bin_edges_data[0] = a_min;
-        for (npy_intp i = 1; i < bin_edges_dims-1; ++i)
-            bin_edges_data[i] = a_min + hist_bin_width * i;
-        bin_edges_data[bin_edges_dims-1] = a_max;
-    }
 
     hist_data = (int64_t *)PyArray_DATA(hist);
     if (bin_edges_arg)
@@ -141,23 +98,23 @@ histogram(PyObject *self, PyObject *args, PyObject *kwds) {
     {
         if (PyArray_NBYTES(hist) < (512 * 1024)) // histogram easily fits in CPU caches - use private histograms
         {
-            bin_priv = new int64_t[hist_dims];
-            for (npy_intp i = 0; i < hist_dims; ++i)
+            bin_priv = new int64_t[hist_length];
+            for (npy_intp i = 0; i < hist_length; ++i)
                 bin_priv[i] = 0;
-            #pragma omp parallel for simd aligned(a_data) reduction(+: bin_priv[0:hist_dims])
+            #pragma omp parallel for simd aligned(a_data) reduction(+: bin_priv[0:hist_length])
             for (npy_intp i = 0; i < a_length; ++i) {
                 auto bin = static_cast< npy_intp >((a_data[i] - a_min) / hist_bin_width);
-                auto idx = (bin < hist_dims-1) ? bin : hist_dims-1;
+                auto idx = (bin < hist_length-1) ? bin : hist_length-1;
                 ++bin_priv[idx];
             }
-            for (npy_intp i = 0; i < hist_dims; ++i)
+            for (npy_intp i = 0; i < hist_length; ++i)
                 hist_data[i] = bin_priv[i];
         } else // histogram likely spills to higher level caches or RAM - use shared histogram
         {
             #pragma omp parallel for
             for (npy_intp i = 0; i < a_length; ++i) {
                 auto bin = static_cast< npy_intp >((a_data[i] - a_min) / hist_bin_width);
-                auto idx = (bin < hist_dims-1) ? bin : hist_dims-1;
+                auto idx = (bin < hist_length-1) ? bin : hist_length-1;
                 #pragma omp atomic
                 ++hist_data[idx];
             }
@@ -168,13 +125,11 @@ histogram(PyObject *self, PyObject *args, PyObject *kwds) {
 
 success:
     if (bin_priv != nullptr) { delete[] bin_priv; bin_priv = nullptr; }
-    Py_XDECREF(bins_np);
     Py_DECREF(a_np);
     return Py_BuildValue("NN", hist, bin_edges);
 
 fail:
     if (bin_priv != nullptr) { delete[] bin_priv; bin_priv = nullptr; }
-    Py_XDECREF(bins_np);
     Py_XDECREF(a_np);
     Py_XDECREF(bin_edges);
     Py_XDECREF(hist);
@@ -442,6 +397,161 @@ fail:
     return NULL;
 }
 
+/**
+ * @brief Function to calculate only the edges of the bins used by the histogram function.
+ *
+ * @see https://numpy.org/doc/stable/reference/generated/numpy.histogram_bin_edges.html
+ * @see https://github.com/numpy/numpy/blob/v1.18.1/numpy/lib/histograms.py#L473-L672
+ *
+ * @param self
+ * @param args
+ * @return PyObject*
+ */
+static PyObject*
+histogram_bin_edges(PyObject *self, PyObject *args, PyObject *kwds) {
+    /* input */
+    PyObject *a = nullptr;
+    PyObject *bins = nullptr;
+    double range_lower = -std::numeric_limits< double >::infinity();
+    double range_upper = std::numeric_limits< double >::infinity();
+    PyObject *weights = nullptr;
+    static char *kwlist[] = {"a", "bins", "range", "weights", NULL};
+
+    /* output */
+    PyArrayObject *bin_edges = nullptr;
+
+    /* helpers */
+    PyArrayObject *a_np = nullptr;
+    PyArrayObject *weights_np = nullptr;
+    bool bin_edges_arg;
+    bool status;
+
+    /* argument parsing */
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|O(ff)O", kwlist, &a, &bins, &range_lower, &range_upper, &weights))
+        goto fail;
+
+    if (range_lower != -std::numeric_limits< double >::infinity() || range_upper != std::numeric_limits< double >::infinity() || weights)
+    {
+        PyErr_SetString(PyExc_NotImplementedError, "Supported arguments: (a, bins)");
+        goto fail;
+    }
+
+    /* obtain ndarray behind `a` */
+    a_np = reinterpret_cast< PyArrayObject* >(PyArray_FROM_OTF(a, NPY_DOUBLE, NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED));
+    if (!a_np)
+        goto fail;
+
+    status = histogram_bin_edges_impl(a_np, bins, range_lower, range_upper, weights_np,
+                                      &bin_edges, &bin_edges_arg);
+    if (!status)
+        goto fail;
+
+    goto success;
+
+success:
+    return Py_BuildValue("N", bin_edges);
+
+fail:
+    Py_XDECREF(bin_edges);
+    return NULL;
+}
+
+bool
+histogram_bin_edges_impl(
+    PyArrayObject* a, PyObject* bins, double range_lower, double range_upper, PyArrayObject* weights,
+    PyArrayObject** bin_edges, bool* bin_edges_arg
+) {
+    PyArrayObject *bins_np = nullptr;
+    npy_intp hist_length = 0;
+    npy_intp bin_edges_length = 0;
+    double *a_data = nullptr;
+    double *bin_edges_data = nullptr;
+    npy_intp a_length = 0;
+    double a_min = std::numeric_limits< double >::infinity();
+    double a_max = -std::numeric_limits< double >::infinity();
+    double hist_bin_width;
+
+    /* process `bins` */
+    if (bins)
+    {
+        if (PyArray_IsIntegerScalar(bins))
+            hist_length = PyLong_AsLong(bins);
+        else if(PyUnicode_Check(bins))
+        {
+            PyErr_SetString(PyExc_NotImplementedError, "Bin estimation algorithms not implemented.");
+            goto fail;
+        } else
+        {
+            bins_np = reinterpret_cast< PyArrayObject* >(PyArray_FROM_OT(bins, NPY_DOUBLE));
+            if (!bins_np)
+                goto fail;
+
+            if (PyArray_NDIM(bins_np) == 1)
+            {
+                *bin_edges_arg = true;
+                hist_length = PyArray_DIM(bins_np, 0) - 1;
+            }
+            else
+            {
+                PyErr_SetString(PyExc_ValueError, "`bins` must be int or 1d array");
+                goto fail;
+            }
+        }
+    } else
+        hist_length = 10;
+    bin_edges_length = hist_length + 1;
+
+    /* allocate output array */
+    *bin_edges = reinterpret_cast< PyArrayObject* >(PyArray_SimpleNew(1, &bin_edges_length, NPY_DOUBLE));
+    if (!*bin_edges)
+        goto fail;
+
+    /* workwörk */
+    a_data = (double *)PyArray_DATA(a);
+    if (!a_data)
+        goto fail;
+    a_length = PyArray_SIZE(a);
+
+    bin_edges_data = (double *)PyArray_DATA(*bin_edges);
+    if (!bin_edges_data)
+        goto fail;
+
+    if (*bin_edges_arg)
+    {
+        if (PyArray_CopyInto(*bin_edges, bins_np) == -1)
+        {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to copy bin edges");
+            goto fail;
+        }
+    } else
+    {
+        #pragma omp parallel for simd aligned(a_data) reduction(min: a_min) reduction(max: a_max)
+        for (npy_intp i = 0; i < a_length; ++i)
+        {
+            double const tmp = a_data[i];
+            a_min = (tmp < a_min) ? tmp : a_min;
+            a_max = (tmp > a_max) ? tmp : a_max;
+        }
+        hist_bin_width = (a_max-a_min)/hist_length;
+
+        bin_edges_data[0] = a_min;
+        for (npy_intp i = 1; i < bin_edges_length-1; ++i)
+            bin_edges_data[i] = a_min + hist_bin_width * i;
+        bin_edges_data[bin_edges_length-1] = a_max;
+    }
+
+    goto success;
+
+success:
+    Py_XDECREF(bins_np);
+    return true;
+
+fail:
+    Py_XDECREF(*bin_edges);
+    Py_XDECREF(bins_np);
+    return false;
+}
+
 PyMethodDef methods[] = {
     {
         "histogram",
@@ -452,6 +562,12 @@ PyMethodDef methods[] = {
     {
         "histogramdd",
         (PyCFunction) histogramdd,
+        METH_VARARGS | METH_KEYWORDS,
+        "Method docstring"
+    },
+    {
+        "histogram_bin_edges",
+        (PyCFunction) histogram_bin_edges,
         METH_VARARGS | METH_KEYWORDS,
         "Method docstring"
     },
