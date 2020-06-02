@@ -52,7 +52,7 @@ def test_histogram_bins_scalar(bins):
     assert np.array_equal(hist_np,  hist_mp)
 
 
-@pytest.mark.xfail
+@pytest.mark.xfail(strict=True, raises=NotImplementedError)
 def test_histogram_bins_array():
     rng = np.random.RandomState(42)
     a = rng.normal(size=1000)
@@ -60,12 +60,123 @@ def test_histogram_bins_array():
     hist_mp, bin_edges_mp = mp.histogram(a, bins)
 
 
-@pytest.mark.xfail
+@pytest.mark.xfail(strict=True, raises=NotImplementedError)
 def test_histogram_bins_string():
     rng = np.random.RandomState(42)
     a = rng.normal(size=1000)
     bins = 'auto'
     hist_mp, bin_edges_mp = mp.histogram(a, bins)
+
+
+def test_histogram2d_x_ndarray_y_ndarray():
+    x = np.sin(np.linspace(0, 10*np.pi, 1000))
+    y = np.sin(np.linspace(0, 10*np.pi, 1000))
+    H_np, xedges_np, yedges_np = np.histogram2d(x, y)
+    H_mp, xedges_mp, yedges_mp = mp.histogram2d(x, y)
+    assert xedges_np.dtype == xedges_mp.dtype
+    assert xedges_np.ndim == xedges_mp.ndim
+    assert xedges_np.shape == xedges_mp.shape
+    assert np.allclose(xedges_np, xedges_mp)
+    assert yedges_np.dtype == yedges_mp.dtype
+    assert yedges_np.ndim == yedges_mp.ndim
+    assert yedges_np.shape == yedges_mp.shape
+    assert np.allclose(yedges_np, yedges_mp)
+    assert H_np.dtype == H_mp.dtype
+    assert H_np.ndim == H_mp.ndim
+    assert H_np.shape == H_mp.shape
+    assert H_np.sum() == H_mp.sum()
+    assert np.array_equal(H_np,  H_mp)
+
+
+def test_histogram2d_x_list_y_list():
+    x = [1, 1, 2, 2, 3]
+    y = [1, 1, 2, 2, 3]
+    H_np, xedges_np, yedges_np = np.histogram2d(x, y)
+    H_mp, xedges_mp, yedges_mp = mp.histogram2d(x, y)
+    assert xedges_np.dtype == xedges_mp.dtype
+    assert xedges_np.ndim == xedges_mp.ndim
+    assert xedges_np.shape == xedges_mp.shape
+    assert np.allclose(xedges_np, xedges_mp)
+    assert yedges_np.dtype == yedges_mp.dtype
+    assert yedges_np.ndim == yedges_mp.ndim
+    assert yedges_np.shape == yedges_mp.shape
+    assert np.allclose(yedges_np, yedges_mp)
+    assert H_np.dtype == H_mp.dtype
+    assert H_np.ndim == H_mp.ndim
+    assert H_np.shape == H_mp.shape
+    assert H_np.sum() == H_mp.sum()
+    assert np.array_equal(H_np,  H_mp)
+
+
+@given(st.integers(min_value=1, max_value=1024))
+def test_histogram2d_bins_scalar(bins):
+    rng = np.random.RandomState(42)
+    x = rng.normal(size=1000)
+    y = rng.normal(size=1000)
+    H_np, xedges_np, yedges_np = np.histogram2d(x, y, bins)
+    H_mp, xedges_mp, yedges_mp = mp.histogram2d(x, y, bins)
+    assert xedges_np.dtype == xedges_mp.dtype
+    assert xedges_np.ndim == xedges_mp.ndim
+    assert xedges_np.shape == xedges_mp.shape
+    assert np.allclose(xedges_np, xedges_mp)
+    assert yedges_np.dtype == yedges_mp.dtype
+    assert yedges_np.ndim == yedges_mp.ndim
+    assert yedges_np.shape == yedges_mp.shape
+    assert np.allclose(yedges_np, yedges_mp)
+    assert H_np.dtype == H_mp.dtype
+    assert H_np.ndim == H_mp.ndim
+    assert H_np.shape == H_mp.shape
+    assert H_np.sum() == H_mp.sum()
+    assert np.array_equal(H_np,  H_mp)
+
+
+@pytest.mark.xfail(strict=True, raises=NotImplementedError)
+def test_histogram2d_bins_1Darray():
+    rng = np.random.RandomState(42)
+    x = rng.normal(size=1000)
+    y = rng.normal(size=1000)
+    bins = np.linspace(-5, 5, 10)
+    H_mp, xedges_mp, yedges_mp = mp.histogram2d(x, y, bins)
+
+
+@given(st.lists(st.integers(min_value=1, max_value=1024), min_size=2, max_size=2))
+def test_histogram2d_bins_list_of_2_ints(bins):
+    rng = np.random.RandomState(42)
+    x = rng.normal(size=1000)
+    y = rng.normal(size=1000)
+    H_np, xedges_np, yedges_np = np.histogram2d(x, y, bins)
+    H_mp, xedges_mp, yedges_mp = mp.histogram2d(x, y, bins)
+    assert xedges_np.dtype == xedges_mp.dtype
+    assert xedges_np.ndim == xedges_mp.ndim
+    assert xedges_np.shape == xedges_mp.shape
+    assert np.allclose(xedges_np, xedges_mp)
+    assert yedges_np.dtype == yedges_mp.dtype
+    assert yedges_np.ndim == yedges_mp.ndim
+    assert yedges_np.shape == yedges_mp.shape
+    assert np.allclose(yedges_np, yedges_mp)
+    assert H_np.dtype == H_mp.dtype
+    assert H_np.ndim == H_mp.ndim
+    assert H_np.shape == H_mp.shape
+    assert H_np.sum() == H_mp.sum()
+    assert np.array_equal(H_np,  H_mp)
+
+
+@pytest.mark.xfail(strict=True)#, raises=NotImplementedError)
+def test_histogram2d_bins_list_of_1Darrays():
+    rng = np.random.RandomState(42)
+    x = rng.normal(size=1000)
+    y = rng.normal(size=1000)
+    bins = [np.linspace(-5, 5, 10), np.linspace(-1, 1, 100)]
+    H_mp, xedges_mp, yedges_mp = mp.histogram2d(x, y, bins)
+
+
+@pytest.mark.xfail(strict=True)#, raises=RuntimeError)
+def test_histogram2d_bins_list_mixed():
+    rng = np.random.RandomState(42)
+    x = rng.normal(size=1000)
+    y = rng.normal(size=1000)
+    bins = [np.linspace(-5, 5, 10), 100]
+    H_mp, xedges_mp, yedges_mp = mp.histogram2d(x, y, bins)
 
 
 def test_histogramdd_sample_ndarray():
@@ -86,7 +197,7 @@ def test_histogramdd_sample_ndarray():
     assert np.allclose(H_np,  H_mp)
 
 
-@pytest.mark.xfail
+@pytest.mark.xfail(strict=True, raises=TypeError)
 def test_histogramdd_sample_list():
     sample = [[1, 1, 2, 2, 3], [1, 2, 2, 3, 3], [2, 2, 3, 3, 4]]
     H_mp, edges_mp = mp.histogramdd(sample)
@@ -132,8 +243,8 @@ def test_histogramdd_bins_array_of_scalars(bins):
     assert np.allclose(H_np,  H_mp)
 
 
-@pytest.mark.xfail
-def test_histogramdd_bins_narray():
+@pytest.mark.xfail(strict=True)#, raises=NotImplementedError)
+def test_histogramdd_bins_ndarray():
     rng = np.random.RandomState(42)
     sample = rng.randn(100, 3)
     bins = (np.arange(3), np.arange(5), np.arange(7))
@@ -172,7 +283,7 @@ def test_histogram_bin_edges_bins_scalar(bins):
     assert np.allclose(bin_edges_np, bin_edges_mp)
 
 
-@pytest.mark.xfail
+@pytest.mark.xfail(strict=True, raises=NotImplementedError)
 def test_histogram_bin_edges_bins_array():
     rng = np.random.RandomState(42)
     a = rng.normal(size=1000)
@@ -180,7 +291,7 @@ def test_histogram_bin_edges_bins_array():
     hist_mp, bin_edges_mp = mp.histogram(a, bins)
 
 
-@pytest.mark.xfail
+@pytest.mark.xfail(strict=True, raises=NotImplementedError)
 def test_histogram_bin_edges_bins_string():
     rng = np.random.RandomState(42)
     a = rng.normal(size=1000)

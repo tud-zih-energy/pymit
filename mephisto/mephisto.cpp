@@ -66,6 +66,11 @@ histogram(PyObject *self, PyObject *args, PyObject *kwds) {
     a_np = reinterpret_cast< PyArrayObject* >(PyArray_FROM_OTF(a, NPY_DOUBLE, NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED));
     if (!a_np)
         goto fail;
+    if (PyArray_NDIM(a_np) != 1)
+    {
+        PyErr_SetString(PyExc_ValueError, "`a` array must be 1D");
+        goto fail;
+    }
 
     status = histogram_bin_edges_impl(a_np, bins, range_lower, range_upper, weights_np,
                                       &bin_edges, &bin_edges_arg);
@@ -96,6 +101,7 @@ histogram(PyObject *self, PyObject *args, PyObject *kwds) {
         goto fail;
     } else
     {
+        /*
         if (PyArray_NBYTES(hist) < (512 * 1024)) // histogram easily fits in CPU caches - use private histograms
         {
             bin_priv = new int64_t[hist_length];
@@ -110,6 +116,7 @@ histogram(PyObject *self, PyObject *args, PyObject *kwds) {
             for (npy_intp i = 0; i < hist_length; ++i)
                 hist_data[i] = bin_priv[i];
         } else // histogram likely spills to higher level caches or RAM - use shared histogram
+        */
         {
             #pragma omp parallel for
             for (npy_intp i = 0; i < a_length; ++i) {
@@ -133,6 +140,274 @@ fail:
     Py_XDECREF(a_np);
     Py_XDECREF(bin_edges);
     Py_XDECREF(hist);
+    return NULL;
+}
+
+/**
+ * @brief Compute the bi-dimensional histogram of two data samples.
+ *
+ * @see https://numpy.org/doc/stable/reference/generated/numpy.histogram2d.html
+ * @see https://github.com/numpy/numpy/blob/v1.18.1/numpy/lib/twodim_base.py#L584-L716
+ *
+ * @param self
+ * @param args
+ * @return PyObject*
+ */
+static PyObject*
+histogram2d(PyObject *self, PyObject *args, PyObject *kwds) {
+    /* input */
+    PyObject *x = nullptr;
+    PyObject *y = nullptr;
+    PyObject *bins = nullptr;
+    PyObject *range = nullptr;
+    bool density = false;
+    bool normed = false;
+    PyObject *weights = nullptr;
+    static char *kwlist[] = {"x", "y", "bins", "range", "density", "normed", "weights", NULL};
+
+    /* output */
+    PyArrayObject *H = nullptr;
+    PyArrayObject *xedges = nullptr;
+    PyArrayObject *yedges = nullptr;
+
+    /* helpers */
+    PyArrayObject *x_np = nullptr;
+    npy_intp x_length;
+    PyArrayObject *y_np = nullptr;
+    npy_intp y_length;
+    npy_intp H_shape[2];
+    PyArrayObject *bins_np = nullptr;
+    bool bin_edges_arg = false;
+    npy_intp edges_shape[2];
+    double *x_data = nullptr;
+    double *y_data = nullptr;
+    double xmin = std::numeric_limits< double >::infinity();
+    double xmax = -std::numeric_limits< double >::infinity();
+    double ymin = std::numeric_limits< double >::infinity();
+    double ymax = -std::numeric_limits< double >::infinity();
+    double xbin_width;
+    double ybin_width;
+    double *xedges_data = nullptr;
+    double *yedges_data = nullptr;
+    double *H_data = nullptr;
+    npy_intp H_length;
+    int64_t *bin_priv = nullptr;
+
+    /* argument parsing */
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO|OOppO", kwlist, &x, &y, &bins, &range, &density, &normed, &weights))
+        goto fail;
+
+    if (range || density || normed || weights)
+    {
+        PyErr_SetString(PyExc_NotImplementedError, "Supported arguments: (x, y, bins)");
+        goto fail;
+    }
+
+    /* obtain ndarray behind `x` */
+    x_np = reinterpret_cast< PyArrayObject* >(PyArray_FROM_OTF(x, NPY_DOUBLE, NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED));
+    if (!x_np)
+        goto fail;
+    if (PyArray_NDIM(x_np) != 1)
+    {
+        PyErr_SetString(PyExc_ValueError, "`x` array must be 1D");
+        goto fail;
+    }
+    x_length = PyArray_SIZE(x_np);
+    /* obtain ndarray behind `y` */
+    y_np = reinterpret_cast< PyArrayObject* >(PyArray_FROM_OTF(y, NPY_DOUBLE, NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED));
+    if (!y_np)
+        goto fail;
+    if (PyArray_NDIM(y_np) != 1)
+    {
+        PyErr_SetString(PyExc_ValueError, "`x` array must be 1D");
+        goto fail;
+    }
+    y_length = PyArray_SIZE(y_np);
+
+    if (x_length != y_length)
+    {
+        PyErr_SetString(PyExc_ValueError, "`x` and `y` arrays must have identical shape");
+        goto fail;
+    }
+
+    /* process `bins` */
+    if (bins)
+    {
+        if (PyArray_IsIntegerScalar(bins)) // the number of bins for the two dimensions (nx=ny=bins)
+        {
+            auto length = PyLong_AsLong(bins);
+            H_shape[0] = length;
+            H_shape[1] = length;
+        } else if(PySequence_Check(bins) && PySequence_Size(bins) == 2 && !PyArray_Check(bins))
+        {
+            bins_np = reinterpret_cast< PyArrayObject* >(PyArray_FROM_OT(bins, NPY_NOTYPE));
+            if (!bins_np)
+                goto fail;
+
+            if (PyArray_NDIM(bins_np) == 1 && PyArray_SIZE(bins_np) == 2) // the number of bins in each dimension (nx, ny = bins)
+            {
+                Py_DECREF(bins_np);
+
+                bins_np = reinterpret_cast< PyArrayObject* >(PyArray_FROM_OT(bins, NPY_INT64));
+                if (!bins_np)
+                    goto fail;
+                int64_t *bins_data = (int64_t *)PyArray_DATA(bins_np);
+
+                H_shape[0] = bins_data[0];
+                H_shape[1] = bins_data[1];
+            }
+            else if (PyArray_NDIM(bins_np) == 2) // he bin edges in each dimension (x_edges, y_edges = bins)
+            {
+                bin_edges_arg = true;
+                H_shape[0] = PyArray_DIM(bins_np, 0);
+                H_shape[1] = PyArray_DIM(bins_np, 1);
+            } else
+            {
+                PyErr_SetString(PyExc_RuntimeError, "`bins` sequence not understood (must be either [int, int] or [array, array])");
+                goto fail;
+            }
+        } else
+        {
+            bins_np = reinterpret_cast< PyArrayObject* >(PyArray_FROM_OT(bins, NPY_NOTYPE));
+            if (!bins_np)
+                goto fail;
+
+            if (PyArray_NDIM(bins_np) == 1) // the bin edges for the two dimensions (x_edges=y_edges=bins)
+            {
+                bin_edges_arg = true;
+                auto length = PyArray_DIM(bins_np, 0);
+                H_shape[0] = length;
+                H_shape[1] = length;
+            }
+            else
+            {
+                PyErr_SetString(PyExc_ValueError, "`bins` array must be 1d");
+                goto fail;
+            }
+        }
+    } else
+    {
+        H_shape[0] = 10;
+        H_shape[1] = 10;
+    }
+    edges_shape[0] = H_shape[0] + 1;
+    edges_shape[1] = H_shape[1] + 1;
+
+    /* allocate output arrays */
+    H = reinterpret_cast< PyArrayObject* >(PyArray_ZEROS(2, H_shape, NPY_DOUBLE, 0));
+    if (!H)
+        goto fail;
+    xedges = reinterpret_cast< PyArrayObject* >(PyArray_SimpleNew(1, &edges_shape[0], NPY_DOUBLE));
+    if (!xedges)
+        goto fail;
+    yedges = reinterpret_cast< PyArrayObject* >(PyArray_SimpleNew(1, &edges_shape[1], NPY_DOUBLE));
+    if (!yedges)
+        goto fail;
+
+    /* workwörk */
+    x_data = (double *)PyArray_DATA(x_np);
+    if (!x_data)
+        goto fail;
+    y_data = (double *)PyArray_DATA(y_np);
+    if (!y_data)
+        goto fail;
+
+    if (bin_edges_arg)
+    {
+        PyErr_SetString(PyExc_NotImplementedError, "Arbitrarily spaced bins not supported yet");
+        goto fail;
+    } else
+    {
+        // TODO might be more efficient to split this loop into x and y
+        #pragma omp parallel for simd aligned(x_data, y_data) reduction(min: xmin) reduction(max: xmax) reduction(min: ymin) reduction(max: ymax)
+        for (npy_intp i = 0; i < x_length; ++i)
+        {
+            double const x_tmp = x_data[i];
+            xmin = (x_tmp < xmin) ? x_tmp : xmin;
+            xmax = (x_tmp > xmax) ? x_tmp : xmax;
+            double const y_tmp = y_data[i];
+            ymin = (y_tmp < ymin) ? y_tmp : ymin;
+            ymax = (y_tmp > ymax) ? y_tmp : ymax;
+        }
+        xbin_width = (xmax-xmin)/H_shape[0];
+        ybin_width = (ymax-ymin)/H_shape[1];
+
+        xedges_data = (double *)PyArray_DATA(reinterpret_cast< PyArrayObject* >(xedges));
+        if (!xedges_data)
+            goto fail;
+        xedges_data[0] = xmin;
+        for (npy_intp i = 1; i < edges_shape[0] - 1; ++i)
+            xedges_data[i] = xmin + xbin_width * i;
+        xedges_data[edges_shape[0] - 1] = xmax;
+
+        yedges_data = (double *)PyArray_DATA(reinterpret_cast< PyArrayObject* >(yedges));
+        if (!yedges_data)
+            goto fail;
+        yedges_data[0] = ymin;
+        for (npy_intp i = 1; i < edges_shape[1] - 1; ++i)
+            yedges_data[i] = ymin + ybin_width * i;
+        yedges_data[edges_shape[1] - 1] = ymax;
+    }
+
+    H_data = (double *)PyArray_DATA(H);
+    H_length = PyArray_SIZE(H);
+    if (bin_edges_arg)
+    {
+        PyErr_SetString(PyExc_NotImplementedError, "Arbitrarily spaced bins not supported yet");
+        goto fail;
+    } else
+    {
+        /*
+        if (PyArray_NBYTES(H) < (512 * 1024)) // histogram easily fits in CPU caches - use private histograms
+        {
+            bin_priv = new int64_t[H_length];
+            for (npy_intp i = 0; i < H_length; ++i)
+                bin_priv[i] = 0;
+            #pragma omp parallel for simd aligned(x_data, y_data) reduction(+: bin_priv[0:H_length])
+            for (npy_intp i = 0; i < x_length; ++i) {
+                auto xbin = static_cast< npy_intp >((x_data[i] - xmin) / xbin_width);
+                auto xidx = (xbin < H_shape[0]-1) ? xbin : H_shape[0]-1;
+                auto ybin = static_cast< npy_intp >((y_data[i] - ymin) / ybin_width);
+                auto yidx = (ybin < H_shape[1]-1) ? ybin : H_shape[1]-1;
+                auto idx = xidx * H_shape[1] + yidx;
+                ++bin_priv[idx];
+            }
+            for (npy_intp i = 0; i < H_length; ++i)
+                H_data[i] = bin_priv[i];
+        } else // histogram likely spills to higher level caches or RAM - use shared histogram
+        */
+        {
+            #pragma omp parallel for
+            for (npy_intp i = 0; i < x_length; ++i) {
+                auto xbin = static_cast< npy_intp >((x_data[i] - xmin) / xbin_width);
+                auto xidx = (xbin < H_shape[0]-1) ? xbin : H_shape[0]-1;
+                auto ybin = static_cast< npy_intp >((y_data[i] - ymin) / ybin_width);
+                auto yidx = (ybin < H_shape[1]-1) ? ybin : H_shape[1]-1;
+                auto idx = xidx * H_shape[1] + yidx;
+                #pragma omp atomic
+                ++H_data[idx]; // floating point addition is not associative - might be too restrictive for compiler optimization
+            }
+        }
+    }
+
+
+    goto success;
+
+success:
+    if (bin_priv != nullptr) { delete[] bin_priv; bin_priv = nullptr; }
+    Py_DECREF(y_np);
+    Py_DECREF(x_np);
+    Py_XDECREF(bins_np);
+    return Py_BuildValue("NNN", H, xedges, yedges);
+
+fail:
+    if (bin_priv != nullptr) { delete[] bin_priv; bin_priv = nullptr; }
+    Py_XDECREF(y_np);
+    Py_XDECREF(x_np);
+    Py_XDECREF(bins_np);
+    Py_XDECREF(yedges);
+    Py_XDECREF(xedges);
+    Py_XDECREF(H);
     return NULL;
 }
 
@@ -328,6 +603,7 @@ histogramdd(PyObject *self, PyObject *args, PyObject *kwds) {
         goto fail;
     } else
     {
+        /*
         if (PyArray_NBYTES(H) < (512 * 1024)) // histogram easily fits in CPU caches - use private histograms
         {
             auto H_length = PyArray_SIZE(H);
@@ -351,6 +627,7 @@ histogramdd(PyObject *self, PyObject *args, PyObject *kwds) {
             for (npy_intp i = 0; i < H_length; ++i)
                 H_data[i] = bin_priv[i];
         } else // histogram likely spills to higher level caches or RAM - use shared histogram
+        */
         {
             #pragma omp parallel for
             for (npy_intp i = 0; i < sample_length; i += sample_D)
@@ -365,7 +642,7 @@ histogramdd(PyObject *self, PyObject *args, PyObject *kwds) {
                         idx *= H_dims[dim+1];
                 }
                 #pragma omp atomic
-                ++H_data[idx];
+                ++H_data[idx]; // floating point addition is not associative - might be too restrictive for compiler optimization
             }
         }
     }
@@ -386,7 +663,7 @@ success:
 fail:
     if (bin_priv != nullptr) { delete[] bin_priv; bin_priv = nullptr; }
     if (hist_bin_width != nullptr) { delete[] hist_bin_width; hist_bin_width = nullptr; }
-    if (bin_edges_np != nullptr) { delete[] bin_edges_np; bin_edges_np = nullptr; }
+    if (bin_edges_np != nullptr) { delete[] bin_edges_np; bin_edges_np = nullptr; } // possible memory leak (list elements not GC'ed)
     if (sample_max != nullptr) { delete[] sample_max; sample_max = nullptr; }
     if (sample_min != nullptr) { delete[] sample_min; sample_min = nullptr; }
     Py_XDECREF(bins_np);
@@ -449,9 +726,11 @@ histogram_bin_edges(PyObject *self, PyObject *args, PyObject *kwds) {
     goto success;
 
 success:
+    Py_DECREF(a_np);
     return Py_BuildValue("N", bin_edges);
 
 fail:
+    Py_XDECREF(a_np);
     Py_XDECREF(bin_edges);
     return NULL;
 }
@@ -556,6 +835,12 @@ PyMethodDef methods[] = {
     {
         "histogram",
         (PyCFunction) histogram,
+        METH_VARARGS | METH_KEYWORDS,
+        "Method docstring"
+    },
+    {
+        "histogram2d",
+        (PyCFunction) histogram2d,
         METH_VARARGS | METH_KEYWORDS,
         "Method docstring"
     },
