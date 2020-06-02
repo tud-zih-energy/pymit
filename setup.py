@@ -1,9 +1,12 @@
+import os
 import numpy as np
 from setuptools import Extension, find_packages, setup
 
+d = os.path.dirname(os.path.abspath(__file__))
+
 module = Extension('mephisto',
                    language='c++',
-                   sources=['mephisto/mephisto.cpp'],
+                   sources=[os.path.join(d, 'mephisto', 'mephisto.cpp')],
                    include_dirs=[np.get_include()],
                    extra_compile_args=['-O3', '-march=native', '-fopenmp', '-fPIC'],
                    #extra_compile_args=['-O0', '-g', '-march=native', '-fopenmp', '-fPIC'],
