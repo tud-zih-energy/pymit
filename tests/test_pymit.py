@@ -1,9 +1,22 @@
 import numpy as np
+import pytest
 
 import pymit
 
+import mephisto as mp
 
-def test_hjmi(madelon):
+
+def test_set_library():
+    assert pymit._lib is np
+    pymit._set_library('mephisto')
+    assert pymit._lib is mp
+    pymit._set_library('numpy')
+    assert pymit._lib is np
+
+
+@pytest.mark.parametrize('library', ['numpy', 'mephisto'])
+def test_hjmi(library, madelon):
+    pymit._set_library(library)
     data, labels = madelon
     bins = 10
     expected_features = [241, 338, 378, 105, 472, 475, 433, 64, 128, 442, 453, 336, 48, 493, 281, 318, 153, 28, 451, 455]
@@ -11,15 +24,15 @@ def test_hjmi(madelon):
     [num_examples, num_features] = data.shape
     data_discrete = np.zeros([num_examples, num_features])
     for i in range(num_features):
-        _, bin_edges = np.histogram(data[:, i], bins=bins)
-        data_discrete[:, i] = np.digitize(data[:, i], bin_edges, right=False)
+        _, bin_edges = pymit._lib.histogram(data[:, i], bins=bins)
+        data_discrete[:, i] = pymit._lib.digitize(data[:, i], bin_edges, right=False)
 
     max_features = 200
     selected_features = []
     j_h = 0
     hjmi = None
 
-    for _ in range(0, max_features):
+    for i in range(0, max_features):
         jmi = np.zeros([num_features], dtype=np.float)
         for X_k in range(num_features):
             if X_k in selected_features:
@@ -45,7 +58,10 @@ def test_hjmi(madelon):
     assert np.array_equal(expected_features, selected_features)
 
 
-def test_jmi(madelon):
+@pytest.mark.parametrize('library', ['numpy', 'mephisto'])
+def test_jmi(library, madelon):
+    pymit._set_library(library)
+
     data, labels = madelon
     bins = 10
     expected_features = [241, 338, 378, 105, 472, 475, 433, 64, 128, 442, 453, 336, 48, 493, 281, 318, 153, 28, 451, 455]
@@ -53,8 +69,8 @@ def test_jmi(madelon):
     [num_examples, num_features] = data.shape
     data_discrete = np.zeros([num_examples, num_features])
     for i in range(num_features):
-        _, bin_edges = np.histogram(data[:, i], bins=bins)
-        data_discrete[:, i] = np.digitize(data[:, i], bin_edges, right=False)
+        _, bin_edges = pymit._lib.histogram(data[:, i], bins=bins)
+        data_discrete[:, i] = pymit._lib.digitize(data[:, i], bin_edges, right=False)
 
     max_features = 20
     selected_features = []

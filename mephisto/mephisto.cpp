@@ -818,22 +818,19 @@ digitize(PyObject *self, PyObject *args, PyObject *kwds) {
         for (npy_intp i = 0; i < x_length; ++i)
         {
             auto const tmp = x_data[i];
-            int64_t lower = 1;
+            int64_t lower = 0;
             int64_t upper = bins_length;
             int64_t bin = 0;
             while (true)
             {
-                if (upper - lower == 0)
-                    break;
-
                 bin = lower + (upper - lower) / 2;
-                if (bins_data[bin-1] <= tmp && bins_data[bin] > tmp)
+                if (bin == 0 || bin == bins_length || (bins_data[bin-1] <= tmp && bins_data[bin] > tmp))
                     break;
 
-                if (bins_data[bin-1] > tmp)
+                if (bins_data[bin] > tmp)
                     upper = bin;
                 else 
-                    lower = bin;
+                    lower = bin + 1;
             }
             indices_data[i] = bin;
         }
@@ -843,19 +840,16 @@ digitize(PyObject *self, PyObject *args, PyObject *kwds) {
         for (npy_intp i = 0; i < x_length; ++i)
         {
             auto const tmp = x_data[i];
-            int64_t lower = 1;
+            int64_t lower = 0;
             int64_t upper = bins_length;
             int64_t bin = 0;
             while (true)
             {
-                if (upper - lower == 0)
-                    break;
-
                 bin = lower + (upper - lower) / 2;
-                if (bins_data[bin-1] < tmp && bins_data[bin] >= tmp)
+                if (bin == 0 || bin == bins_length || (bins_data[bin-1] < tmp && bins_data[bin] >= tmp))
                     break;
 
-                if (bins_data[bin-1] >= tmp)
+                if (bins_data[bin] >= tmp)
                     upper = bin;
                 else 
                     lower = bin;
@@ -868,19 +862,16 @@ digitize(PyObject *self, PyObject *args, PyObject *kwds) {
         for (npy_intp i = 0; i < x_length; ++i)
         {
             auto const tmp = x_data[i];
-            int64_t lower = 1;
+            int64_t lower = 0;
             int64_t upper = bins_length;
             int64_t bin = 0;
             while (true)
             {
-                if (upper - lower == 0)
-                    break;
-
                 bin = lower + (upper - lower) / 2;
-                if (bins_data[bin-1] > tmp && bins_data[bin] <= tmp)
+                if (bin == 0 || bin == bins_length || (bins_data[bin-1] > tmp && bins_data[bin] <= tmp))
                     break;
 
-                if (bins_data[bin-1] <= tmp)
+                if (bins_data[bin] <= tmp)
                     upper = bin;
                 else 
                     lower = bin;
@@ -893,22 +884,19 @@ digitize(PyObject *self, PyObject *args, PyObject *kwds) {
         for (npy_intp i = 0; i < x_length; ++i)
         {
             auto const tmp = x_data[i];
-            int64_t lower = 1;
+            int64_t lower = 0;
             int64_t upper = bins_length;
             int64_t bin = 0;
             while (true)
             {
-                if (upper - lower == 0)
-                    break;
-
                 bin = lower + (upper - lower) / 2;
-                if (bins_data[bin-1] >= tmp && bins_data[bin] < tmp)
+                if (bin == 0 || bin == bins_length || (bins_data[bin-1] >= tmp && bins_data[bin] < tmp))
                     break;
 
-                if (bins_data[bin-1] < tmp)
+                if (bins_data[bin] < tmp)
                     upper = bin;
                 else 
-                    lower = bin;
+                    lower = bin + 1;
             }
             indices_data[i] = bin;
         }

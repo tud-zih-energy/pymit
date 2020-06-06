@@ -1,5 +1,7 @@
 import numpy as np
 
+import pymit
+
 LOG_BASE = 2
 
 
@@ -24,11 +26,11 @@ def I(X, Y, bins):
         xbins = bins
         base = bins
 
-    p_xy, _, _ = np.histogram2d(X, Y, bins=[xbins, ybins])
+    p_xy, _, _ = pymit._lib.histogram2d(X, Y, bins=[xbins, ybins])
     p_xy = p_xy / len(X)
-    p_y, _ = np.histogram(Y, bins=ybins)
+    p_y, _ = pymit._lib.histogram(Y, bins=ybins)
     p_y = p_y / len(Y)
-    p_x, _ = np.histogram(X, bins=xbins)
+    p_x, _ = pymit._lib.histogram(X, bins=xbins)
     p_x = p_x / len(X)
 
     I_ = 0
@@ -65,13 +67,13 @@ def I_cond(X, Y, Z, bins):
         base = bins
 
     XYZ = np.transpose(np.array([X, Y, Z]))
-    p_xyz, _ = np.histogramdd(XYZ, bins=[xbins, ybins, zbins])
+    p_xyz, _ = pymit._lib.histogramdd(XYZ, bins=[xbins, ybins, zbins])
     p_xyz = p_xyz / len(Z)
-    p_xz, _, _ = np.histogram2d(X, Z, bins=[xbins, zbins])
+    p_xz, _, _ = pymit._lib.histogram2d(X, Z, bins=[xbins, zbins])
     p_xz = p_xz / len(X)
-    p_yz, _, _ = np.histogram2d(Y, Z, bins=[ybins, zbins])
+    p_yz, _, _ = pymit._lib.histogram2d(Y, Z, bins=[ybins, zbins])
     p_yz = p_yz / len(Y)
-    p_z, _ = np.histogram(Z, bins=zbins)
+    p_z, _ = pymit._lib.histogram(Z, bins=zbins)
     p_z = p_z / len(Z)
 
     I = 0

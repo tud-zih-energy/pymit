@@ -1,5 +1,7 @@
 import numpy as np
 
+import pymit
+
 LOG_BASE = 2
 
 
@@ -13,7 +15,7 @@ def H(X, bins):
     @param bins If X is already diskretised, amount of bins of X. If X is not discretised, amount of bins to diskretise X into
     @return Returns the entropy of X
     """
-    p_x, _ = np.histogram(X, bins=bins)
+    p_x, _ = pymit._lib.histogram(X, bins=bins)
     p_x = p_x / len(X)
 
     H_ = 0
@@ -45,7 +47,7 @@ def H_cond(X, Y, bins):
         xbins = bins
         base = bins
 
-    p_xy, _, _ = np.histogram2d(X, Y, bins=[xbins, ybins])
+    p_xy, _, _ = pymit._lib.histogram2d(X, Y, bins=[xbins, ybins])
     p_xy = p_xy / len(X)
     p_y, _ = np.histogram(Y, bins=ybins)
     p_y = p_y / len(Y)

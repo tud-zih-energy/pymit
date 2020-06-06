@@ -311,7 +311,7 @@ def test_digitize_x_ndarray():
 
 
 def test_digitize_x_list():
-    x = [1, 1, 2, 2, 3]
+    x = [1, 1, 2, 2, 3, 4]
     bins = np.linspace(1, 4, 4)
     indices_np = np.digitize(x, bins)
     indices_mp = mp.digitize(x, bins)
@@ -343,24 +343,24 @@ def test_digitize_bins_decreasing():
     assert np.array_equal(indices_np, indices_mp)
 
 
-@pytest.mark.parametrize("right", [False, True])
+@pytest.mark.parametrize('right', [False, True])
 def test_digitize_bins_increasing_right(right):
-    x = np.array([0, 0.5, 1])
-    bins = np.array([-1, 0.5, 2])
+    x = np.array([1, 1, 2, 2, 3, 4])
+    bins = np.linspace(1, 4, 4)
     indices_np = np.digitize(x, bins, right)
-    indices_mp = mp.digitize(x=x, bins=bins, right=right)
+    indices_mp = mp.digitize(x, bins, right)
     assert indices_np.dtype == indices_mp.dtype
     assert indices_np.ndim == indices_mp.ndim
     assert indices_np.shape == indices_mp.shape
     assert np.array_equal(indices_np, indices_mp)
 
 
-@pytest.mark.parametrize("right", [False, True])
+@pytest.mark.parametrize('right', [False, True])
 def test_digitize_bins_decreasing_right(right):
-    x = np.array([0, 0.5, 1])
-    bins = np.array([2, 0.5, -1])
+    x = np.array([1, 1, 2, 2, 3, 4])
+    bins = np.linspace(4, 1, 4)
     indices_np = np.digitize(x, bins, right)
-    indices_mp = mp.digitize(x=x, bins=bins, right=right)
+    indices_mp = mp.digitize(x, bins, right)
     assert indices_np.dtype == indices_mp.dtype
     assert indices_np.ndim == indices_mp.ndim
     assert indices_np.shape == indices_mp.shape
