@@ -297,3 +297,71 @@ def test_histogram_bin_edges_bins_string():
     a = rng.normal(size=1000)
     bins = 'auto'
     hist_mp, bin_edges_mp = mp.histogram(a, bins)
+
+
+def test_digitize_x_ndarray():
+    x = np.sin(np.linspace(0, 10*np.pi, 1000))
+    bins = np.linspace(-1, 1, 11)
+    indices_np = np.digitize(x, bins)
+    indices_mp = mp.digitize(x, bins)
+    assert indices_np.dtype == indices_mp.dtype
+    assert indices_np.ndim == indices_mp.ndim
+    assert indices_np.shape == indices_mp.shape
+    assert np.array_equal(indices_np, indices_mp)
+
+
+def test_digitize_x_list():
+    x = [1, 1, 2, 2, 3]
+    bins = np.linspace(1, 4, 4)
+    indices_np = np.digitize(x, bins)
+    indices_mp = mp.digitize(x, bins)
+    assert indices_np.dtype == indices_mp.dtype
+    assert indices_np.ndim == indices_mp.ndim
+    assert indices_np.shape == indices_mp.shape
+    assert np.array_equal(indices_np, indices_mp)
+
+
+def test_digitize_bins_list():
+    x = np.sin(np.linspace(0, 10*np.pi, 1000))
+    bins = [-1, 0, 1]
+    indices_np = np.digitize(x, bins)
+    indices_mp = mp.digitize(x, bins)
+    assert indices_np.dtype == indices_mp.dtype
+    assert indices_np.ndim == indices_mp.ndim
+    assert indices_np.shape == indices_mp.shape
+    assert np.array_equal(indices_np, indices_mp)
+
+
+def test_digitize_bins_decreasing():
+    x = np.sin(np.linspace(0, 10*np.pi, 1000))
+    bins = np.linspace(1, -1, 10)
+    indices_np = np.digitize(x, bins)
+    indices_mp = mp.digitize(x, bins)
+    assert indices_np.dtype == indices_mp.dtype
+    assert indices_np.ndim == indices_mp.ndim
+    assert indices_np.shape == indices_mp.shape
+    assert np.array_equal(indices_np, indices_mp)
+
+
+@pytest.mark.parametrize("right", [False, True])
+def test_digitize_bins_increasing_right(right):
+    x = np.array([0, 0.5, 1])
+    bins = np.array([-1, 0.5, 2])
+    indices_np = np.digitize(x, bins, right)
+    indices_mp = mp.digitize(x=x, bins=bins, right=right)
+    assert indices_np.dtype == indices_mp.dtype
+    assert indices_np.ndim == indices_mp.ndim
+    assert indices_np.shape == indices_mp.shape
+    assert np.array_equal(indices_np, indices_mp)
+
+
+@pytest.mark.parametrize("right", [False, True])
+def test_digitize_bins_decreasing_right(right):
+    x = np.array([0, 0.5, 1])
+    bins = np.array([2, 0.5, -1])
+    indices_np = np.digitize(x, bins, right)
+    indices_mp = mp.digitize(x=x, bins=bins, right=right)
+    assert indices_np.dtype == indices_mp.dtype
+    assert indices_np.ndim == indices_mp.ndim
+    assert indices_np.shape == indices_mp.shape
+    assert np.array_equal(indices_np, indices_mp)

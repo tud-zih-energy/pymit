@@ -29,9 +29,9 @@ histogram(PyObject *self, PyObject *args, PyObject *kwds) {
     PyObject *bins = nullptr;
     double range_lower = -std::numeric_limits< double >::infinity();
     double range_upper = std::numeric_limits< double >::infinity();
-    bool normed = false;
+    int normed = false;
     PyObject *weights = nullptr;
-    bool density = false;
+    int density = false;
     static char *kwlist[] = {"a", "bins", "range", "normed", "weights", "density", NULL};
 
     /* output */
@@ -101,7 +101,6 @@ histogram(PyObject *self, PyObject *args, PyObject *kwds) {
         goto fail;
     } else
     {
-        /*
         if (PyArray_NBYTES(hist) < (512 * 1024)) // histogram easily fits in CPU caches - use private histograms
         {
             bin_priv = new int64_t[hist_length];
@@ -116,13 +115,12 @@ histogram(PyObject *self, PyObject *args, PyObject *kwds) {
             for (npy_intp i = 0; i < hist_length; ++i)
                 hist_data[i] = bin_priv[i];
         } else // histogram likely spills to higher level caches or RAM - use shared histogram
-        */
         {
             #pragma omp parallel for
             for (npy_intp i = 0; i < a_length; ++i) {
                 auto bin = static_cast< npy_intp >((a_data[i] - a_min) / hist_bin_width);
                 auto idx = (bin < hist_length-1) ? bin : hist_length-1;
-                #pragma omp atomic
+                #pragma omp atomic update
                 ++hist_data[idx];
             }
         }
@@ -151,6 +149,7 @@ fail:
  *
  * @param self
  * @param args
+ * @param kwds
  * @return PyObject*
  */
 static PyObject*
@@ -160,8 +159,8 @@ histogram2d(PyObject *self, PyObject *args, PyObject *kwds) {
     PyObject *y = nullptr;
     PyObject *bins = nullptr;
     PyObject *range = nullptr;
-    bool density = false;
-    bool normed = false;
+    npy_intp density = false;
+    npy_intp normed = false;
     PyObject *weights = nullptr;
     static char *kwlist[] = {"x", "y", "bins", "range", "density", "normed", "weights", NULL};
 
@@ -357,7 +356,6 @@ histogram2d(PyObject *self, PyObject *args, PyObject *kwds) {
         goto fail;
     } else
     {
-        /*
         if (PyArray_NBYTES(H) < (512 * 1024)) // histogram easily fits in CPU caches - use private histograms
         {
             bin_priv = new int64_t[H_length];
@@ -375,7 +373,6 @@ histogram2d(PyObject *self, PyObject *args, PyObject *kwds) {
             for (npy_intp i = 0; i < H_length; ++i)
                 H_data[i] = bin_priv[i];
         } else // histogram likely spills to higher level caches or RAM - use shared histogram
-        */
         {
             #pragma omp parallel for
             for (npy_intp i = 0; i < x_length; ++i) {
@@ -384,7 +381,7 @@ histogram2d(PyObject *self, PyObject *args, PyObject *kwds) {
                 auto ybin = static_cast< npy_intp >((y_data[i] - ymin) / ybin_width);
                 auto yidx = (ybin < H_shape[1]-1) ? ybin : H_shape[1]-1;
                 auto idx = xidx * H_shape[1] + yidx;
-                #pragma omp atomic
+                #pragma omp atomic update
                 ++H_data[idx]; // floating point addition is not associative - might be too restrictive for compiler optimization
             }
         }
@@ -419,6 +416,7 @@ fail:
  *
  * @param self
  * @param args
+ * @param kwds
  * @return PyObject*
  */
 static PyObject*
@@ -427,9 +425,9 @@ histogramdd(PyObject *self, PyObject *args, PyObject *kwds) {
     PyObject *sample = nullptr;
     PyObject *bins = nullptr;
     PyObject *range = nullptr;
-    bool normed = false;
+    npy_intp normed = false;
     PyObject *weights = nullptr;
-    bool density = false;
+    npy_intp density = false;
     static char *kwlist[] = {"sample", "bins", "range", "normed", "weights", "density", NULL};
 
     /* output */
@@ -603,7 +601,6 @@ histogramdd(PyObject *self, PyObject *args, PyObject *kwds) {
         goto fail;
     } else
     {
-        /*
         if (PyArray_NBYTES(H) < (512 * 1024)) // histogram easily fits in CPU caches - use private histograms
         {
             auto H_length = PyArray_SIZE(H);
@@ -627,7 +624,6 @@ histogramdd(PyObject *self, PyObject *args, PyObject *kwds) {
             for (npy_intp i = 0; i < H_length; ++i)
                 H_data[i] = bin_priv[i];
         } else // histogram likely spills to higher level caches or RAM - use shared histogram
-        */
         {
             #pragma omp parallel for
             for (npy_intp i = 0; i < sample_length; i += sample_D)
@@ -641,7 +637,7 @@ histogramdd(PyObject *self, PyObject *args, PyObject *kwds) {
                     if (dim != sample_D - 1)
                         idx *= H_dims[dim+1];
                 }
-                #pragma omp atomic
+                #pragma omp atomic update
                 ++H_data[idx]; // floating point addition is not associative - might be too restrictive for compiler optimization
             }
         }
@@ -732,6 +728,205 @@ success:
 fail:
     Py_XDECREF(a_np);
     Py_XDECREF(bin_edges);
+    return NULL;
+}
+
+/**
+ * @brief Return the indices of the bins to which each value in input array belongs.
+ *
+ * @see https://numpy.org/doc/stable/reference/generated/numpy.digitize.html
+ * @see https://github.com/numpy/numpy/blob/v1.18.1/numpy/lib/function_base.py#L4700-L4808
+ *
+ * @param self
+ * @param args
+ * @param kwds
+ * @return PyObject*
+ */
+static PyObject*
+digitize(PyObject *self, PyObject *args, PyObject *kwds) {
+    /* input */
+    PyObject *x = nullptr;
+    PyObject *bins = nullptr;
+    npy_intp right = false;
+    static char *kwlist[] = {"x", "bins", "right", NULL};
+
+    /* output */
+    PyArrayObject *indices = nullptr;
+
+    /* helpers */
+    PyArrayObject *x_np = nullptr;
+    PyArrayObject *bins_np = nullptr;
+    double *bins_data = nullptr;
+    npy_intp bins_length;
+    bool increasing;
+    npy_intp *x_shape = nullptr;
+    double *x_data = nullptr;
+    npy_intp x_length;
+    int64_t *indices_data = nullptr;
+
+    /* argument parsing */
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO|p", kwlist, &x, &bins, &right))
+        goto fail;
+
+    /* obtain ndarray behind `x` */
+    x_np = reinterpret_cast< PyArrayObject* >(PyArray_FROM_OTF(x, NPY_DOUBLE, NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED));
+    if (!x_np)
+        goto fail;
+    /* obtain ndarray behind `bins` */
+    bins_np = reinterpret_cast< PyArrayObject* >(PyArray_FROM_OTF(bins, NPY_DOUBLE, NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED));
+    if (!bins_np)
+        goto fail;
+    if (PyArray_NDIM(bins_np) != 1)
+    {
+        PyErr_SetString(PyExc_ValueError, "`bins` must be 1d array");
+        goto fail;
+    }
+    bins_data = (double*)PyArray_DATA(bins_np);
+    bins_length = PyArray_SIZE(bins_np);
+    if (bins_length < 2)
+    {
+        PyErr_SetString(PyExc_ValueError, "`bins` must contain at least 2 values");
+        goto fail;
+    }
+    increasing = bins_data[0] < bins_data[1];
+    for (npy_intp i = 1; i < bins_length - 1; ++i)
+        if ((bins_data[i] >= bins_data[i+1]) == increasing)
+        {
+            PyErr_SetString(PyExc_ValueError, "`bins` must be monotonic");
+            goto fail;
+        }
+
+    /* allocate output arrays */
+    x_shape = PyArray_DIMS(x_np);
+    if (!x_shape)
+        goto fail;
+    indices = reinterpret_cast< PyArrayObject* >(PyArray_SimpleNew(PyArray_NDIM(x_np), x_shape, NPY_INT64));
+    if (!indices)
+        goto fail;
+
+    /* wörkwörk */
+    x_data = (double*)PyArray_DATA(x_np);
+    if (!x_data)
+        goto fail;
+    x_length = PyArray_SIZE(x_np);
+    indices_data = (int64_t*)PyArray_DATA(indices);
+    if (!indices_data)
+        goto fail;
+    if (increasing && !right)
+    {
+        #pragma omp parallel for
+        for (npy_intp i = 0; i < x_length; ++i)
+        {
+            auto const tmp = x_data[i];
+            int64_t lower = 1;
+            int64_t upper = bins_length;
+            int64_t bin = 0;
+            while (true)
+            {
+                if (upper - lower == 0)
+                    break;
+
+                bin = lower + (upper - lower) / 2;
+                if (bins_data[bin-1] <= tmp && bins_data[bin] > tmp)
+                    break;
+
+                if (bins_data[bin-1] > tmp)
+                    upper = bin;
+                else 
+                    lower = bin;
+            }
+            indices_data[i] = bin;
+        }
+    } else if (increasing && right)
+    {
+        #pragma omp parallel for
+        for (npy_intp i = 0; i < x_length; ++i)
+        {
+            auto const tmp = x_data[i];
+            int64_t lower = 1;
+            int64_t upper = bins_length;
+            int64_t bin = 0;
+            while (true)
+            {
+                if (upper - lower == 0)
+                    break;
+
+                bin = lower + (upper - lower) / 2;
+                if (bins_data[bin-1] < tmp && bins_data[bin] >= tmp)
+                    break;
+
+                if (bins_data[bin-1] >= tmp)
+                    upper = bin;
+                else 
+                    lower = bin;
+            }
+            indices_data[i] = bin;
+        }
+    } else if (!increasing && !right)
+    {
+        #pragma omp parallel for
+        for (npy_intp i = 0; i < x_length; ++i)
+        {
+            auto const tmp = x_data[i];
+            int64_t lower = 1;
+            int64_t upper = bins_length;
+            int64_t bin = 0;
+            while (true)
+            {
+                if (upper - lower == 0)
+                    break;
+
+                bin = lower + (upper - lower) / 2;
+                if (bins_data[bin-1] > tmp && bins_data[bin] <= tmp)
+                    break;
+
+                if (bins_data[bin-1] <= tmp)
+                    upper = bin;
+                else 
+                    lower = bin;
+            }
+            indices_data[i] = bin;
+        }
+    } else
+    {
+        #pragma omp parallel for
+        for (npy_intp i = 0; i < x_length; ++i)
+        {
+            auto const tmp = x_data[i];
+            int64_t lower = 1;
+            int64_t upper = bins_length;
+            int64_t bin = 0;
+            while (true)
+            {
+                if (upper - lower == 0)
+                    break;
+
+                bin = lower + (upper - lower) / 2;
+                if (bins_data[bin-1] >= tmp && bins_data[bin] < tmp)
+                    break;
+
+                if (bins_data[bin-1] < tmp)
+                    upper = bin;
+                else 
+                    lower = bin;
+            }
+            indices_data[i] = bin;
+        }
+    }
+
+    goto success;
+
+success:
+    Py_DECREF(x_shape);
+    Py_DECREF(bins_np);
+    Py_DECREF(x_np);
+    return Py_BuildValue("N", indices);
+
+fail:
+    Py_XDECREF(x_shape);
+    Py_XDECREF(bins_np);
+    Py_XDECREF(x_np);
+    Py_XDECREF(indices);
     return NULL;
 }
 
@@ -853,6 +1048,12 @@ PyMethodDef methods[] = {
     {
         "histogram_bin_edges",
         (PyCFunction) histogram_bin_edges,
+        METH_VARARGS | METH_KEYWORDS,
+        "Method docstring"
+    },
+    {
+        "digitize",
+        (PyCFunction) digitize,
         METH_VARARGS | METH_KEYWORDS,
         "Method docstring"
     },
