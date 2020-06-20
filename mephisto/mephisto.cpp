@@ -1,10 +1,13 @@
 #include <cmath>
+#include <cstdlib>
 #include <limits>
 
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/arrayobject.h>
+
+static Py_ssize_t cache_size_kb;
 
 bool
 histogram_bin_edges_impl(
@@ -101,7 +104,7 @@ histogram(PyObject *self, PyObject *args, PyObject *kwds) {
         goto fail;
     } else
     {
-        if (PyArray_NBYTES(hist) < (512 * 1024)) // histogram easily fits in CPU caches - use private histograms
+        if (PyArray_NBYTES(hist) < cache_size_kb * 1024) // histogram easily fits in CPU caches - use private histograms
         {
             bin_priv = new int64_t[hist_length];
             for (npy_intp i = 0; i < hist_length; ++i)
@@ -356,7 +359,7 @@ histogram2d(PyObject *self, PyObject *args, PyObject *kwds) {
         goto fail;
     } else
     {
-        if (PyArray_NBYTES(H) < (512 * 1024)) // histogram easily fits in CPU caches - use private histograms
+        if (PyArray_NBYTES(H) < cache_size_kb * 1024) // histogram easily fits in CPU caches - use private histograms
         {
             bin_priv = new int64_t[H_length];
             for (npy_intp i = 0; i < H_length; ++i)
@@ -601,7 +604,7 @@ histogramdd(PyObject *self, PyObject *args, PyObject *kwds) {
         goto fail;
     } else
     {
-        if (PyArray_NBYTES(H) < (512 * 1024)) // histogram easily fits in CPU caches - use private histograms
+        if (PyArray_NBYTES(H) < cache_size_kb * 1024) // histogram easily fits in CPU caches - use private histograms
         {
             auto H_length = PyArray_SIZE(H);
             bin_priv = new int64_t[H_length];
@@ -1014,6 +1017,37 @@ fail:
     return false;
 }
 
+static PyObject*
+get_cache_size_kb(PyObject *self, PyObject*) {
+    return Py_BuildValue("n", cache_size_kb);
+}
+
+static PyObject*
+set_cache_size_kb(PyObject *self, PyObject *args, PyObject *kwds) {
+    /* input */
+    Py_ssize_t size;
+    static char *kwlist[] = {"size", NULL};
+
+    /* argument parsing */
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "n", kwlist, &size))
+        goto fail;
+
+    if (size < 1)
+    {
+        PyErr_SetString(PyExc_ValueError, "`size` must be positive");
+        goto fail;
+    }
+
+    cache_size_kb = size;
+    goto success;
+
+success:
+    return Py_None;
+
+fail:
+    return NULL;
+}
+
 PyMethodDef methods[] = {
     {
         "histogram",
@@ -1045,6 +1079,18 @@ PyMethodDef methods[] = {
         METH_VARARGS | METH_KEYWORDS,
         "Method docstring"
     },
+    {
+        "get_cache_size_kb",
+        (PyCFunction) get_cache_size_kb,
+        METH_NOARGS,
+        "Method docstring"
+    },
+    {
+        "set_cache_size_kb",
+        (PyCFunction) set_cache_size_kb,
+        METH_VARARGS | METH_KEYWORDS,
+        "Method docstring"
+    },
     {NULL, NULL, 0, NULL} /* sentinel */
 };
 
@@ -1058,7 +1104,18 @@ PyModuleDef module = {
 
 PyMODINIT_FUNC
 PyInit_mephisto(void) {
-    auto ret = PyModule_Create(&module);
+    char* env_cache_size_kb;
+    PyObject *ret = PyModule_Create(&module);
     import_array();
+
+    cache_size_kb = 512;
+    env_cache_size_kb = std::getenv("PYMIT_CACHE_SIZE_KB");
+    if (env_cache_size_kb)
+    {
+        auto tmp = std::atoi(env_cache_size_kb);
+        if (0 < tmp)
+            cache_size_kb = tmp;
+    }
+
     return ret;
 }

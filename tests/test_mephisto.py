@@ -5,6 +5,11 @@ from hypothesis import assume, given, settings, strategies as st
 import mephisto as mp
 
 
+# change default profile as to not trigger on deadline changes
+settings.register_profile('ci', database=None, deadline=None)
+settings.load_profile('ci')
+
+
 def test_histogram_a_ndarray():
     a = np.sin(np.linspace(0, 10*np.pi, 1000))
     hist_np, bin_edges_np = np.histogram(a)
@@ -17,7 +22,7 @@ def test_histogram_a_ndarray():
     assert hist_np.ndim == hist_mp.ndim
     assert hist_np.shape == hist_mp.shape
     assert hist_np.sum() == hist_mp.sum()
-    assert np.array_equal(hist_np,  hist_mp)
+    assert np.array_equal(hist_np, hist_mp)
 
 
 def test_histogram_a_list():
@@ -49,7 +54,7 @@ def test_histogram_bins_scalar(bins):
     assert hist_np.ndim == hist_mp.ndim
     assert hist_np.shape == hist_mp.shape
     assert hist_np.sum() == hist_mp.sum()
-    assert np.array_equal(hist_np,  hist_mp)
+    assert np.array_equal(hist_np, hist_mp)
 
 
 @pytest.mark.xfail(strict=True, raises=NotImplementedError)
@@ -85,7 +90,7 @@ def test_histogram2d_x_ndarray_y_ndarray():
     assert H_np.ndim == H_mp.ndim
     assert H_np.shape == H_mp.shape
     assert H_np.sum() == H_mp.sum()
-    assert np.array_equal(H_np,  H_mp)
+    assert np.array_equal(H_np, H_mp)
 
 
 def test_histogram2d_x_list_y_list():
@@ -105,7 +110,7 @@ def test_histogram2d_x_list_y_list():
     assert H_np.ndim == H_mp.ndim
     assert H_np.shape == H_mp.shape
     assert H_np.sum() == H_mp.sum()
-    assert np.array_equal(H_np,  H_mp)
+    assert np.array_equal(H_np, H_mp)
 
 
 @given(st.integers(min_value=1, max_value=1024))
@@ -127,7 +132,7 @@ def test_histogram2d_bins_scalar(bins):
     assert H_np.ndim == H_mp.ndim
     assert H_np.shape == H_mp.shape
     assert H_np.sum() == H_mp.sum()
-    assert np.array_equal(H_np,  H_mp)
+    assert np.array_equal(H_np, H_mp)
 
 
 @pytest.mark.xfail(strict=True, raises=NotImplementedError)
@@ -158,7 +163,7 @@ def test_histogram2d_bins_list_of_2_ints(bins):
     assert H_np.ndim == H_mp.ndim
     assert H_np.shape == H_mp.shape
     assert H_np.sum() == H_mp.sum()
-    assert np.array_equal(H_np,  H_mp)
+    assert np.array_equal(H_np, H_mp)
 
 
 @pytest.mark.xfail(strict=True)#, raises=NotImplementedError)
@@ -194,7 +199,7 @@ def test_histogramdd_sample_ndarray():
     assert H_np.ndim == H_mp.ndim
     assert H_np.shape == H_mp.shape
     assert H_np.sum() == H_mp.sum()
-    assert np.allclose(H_np,  H_mp)
+    assert np.allclose(H_np, H_mp)
 
 
 @pytest.mark.xfail(strict=True, raises=TypeError)
@@ -219,10 +224,9 @@ def test_histogramdd_bins_scalar(bins):
     assert H_np.ndim == H_mp.ndim
     assert H_np.shape == H_mp.shape
     assert H_np.sum() == H_mp.sum()
-    assert np.allclose(H_np,  H_mp)
+    assert np.allclose(H_np, H_mp)
 
 
-@settings(deadline=None, database=None)
 @given(st.lists(st.integers(min_value=1, max_value=8), min_size=2, max_size=8))
 def test_histogramdd_bins_array_of_scalars(bins):
     assume(np.prod(bins) * 8 < 1024 * 1024 * 128)  # don't stress RAM too much
@@ -240,7 +244,7 @@ def test_histogramdd_bins_array_of_scalars(bins):
     assert H_np.ndim == H_mp.ndim
     assert H_np.shape == H_mp.shape
     assert H_np.sum() == H_mp.sum()
-    assert np.allclose(H_np,  H_mp)
+    assert np.allclose(H_np, H_mp)
 
 
 @pytest.mark.xfail(strict=True)#, raises=NotImplementedError)
@@ -365,3 +369,40 @@ def test_digitize_bins_decreasing_right(right):
     assert indices_np.ndim == indices_mp.ndim
     assert indices_np.shape == indices_mp.shape
     assert np.array_equal(indices_np, indices_mp)
+
+
+def test_get_cache_size_kb():
+    assert mp.get_cache_size_kb() == 512
+
+
+@given(st.integers(min_value=1, max_value=2**27))
+def test_set_cache_size_kb(size):
+    mp.set_cache_size_kb(size)
+    mp.get_cache_size_kb() == size
+
+
+@given(st.integers(min_value=-(2**32), max_value=0))
+def test_set_cache_size_kb_not_positive(size):
+    with pytest.raises(ValueError) as e:
+        mp.set_cache_size_kb(size)
+    assert e.match('must be positive')
+
+
+@given(st.one_of(st.characters(),
+                 st.complex_numbers(),
+                 st.dates(),
+                 st.datetimes(),
+                 st.dictionaries(st.integers(), st.integers()),
+                 st.floats(),
+                 st.iterables(st.integers()),
+                 st.lists(st.integers()),
+                 st.none(),
+                 st.sets(st.integers()),
+                 st.text(),
+                 st.timedeltas(),
+                 st.times(),
+                 st.tuples(st.integers())))
+def test_set_cache_size_kb_not_integer(size):
+    with pytest.raises(TypeError) as e:
+        mp.set_cache_size_kb(size)
+    assert e.match('integer')

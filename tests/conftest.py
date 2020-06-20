@@ -1,10 +1,4 @@
-import os
-import shutil
-import zipfile
-
-import numpy as np
 import pytest
-import requests
 
 import pymit.data
 
