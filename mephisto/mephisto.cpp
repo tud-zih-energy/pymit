@@ -44,8 +44,8 @@ histogram(PyObject *self, PyObject *args, PyObject *kwds) {
     /* helpers */
     PyArrayObject *a_np = nullptr;
     PyArrayObject *weights_np = nullptr;
-    bool bin_edges_arg;
-    bool status;
+    bool bin_edges_arg = false;
+    bool status = true;
     double *bin_edges_data = nullptr;
     npy_intp hist_length;
     double a_min;
@@ -699,8 +699,8 @@ histogram_bin_edges(PyObject *self, PyObject *args, PyObject *kwds) {
     /* helpers */
     PyArrayObject *a_np = nullptr;
     PyArrayObject *weights_np = nullptr;
-    bool bin_edges_arg;
-    bool status;
+    bool bin_edges_arg = false;
+    bool status = true;
 
     /* argument parsing */
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "O|O(ff)O", kwlist, &a, &bins, &range_lower, &range_upper, &weights))
