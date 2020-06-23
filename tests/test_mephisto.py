@@ -375,17 +375,17 @@ def test_get_cache_size_kb():
     assert mp.get_cache_size_kb() == 512
 
 
-@given(st.integers(min_value=1, max_value=2**27))
+@given(st.integers(min_value=0, max_value=2**27))
 def test_set_cache_size_kb(size):
     mp.set_cache_size_kb(size)
     mp.get_cache_size_kb() == size
 
 
-@given(st.integers(min_value=-(2**32), max_value=0))
+@given(st.integers(min_value=-(2**32), max_value=-1))
 def test_set_cache_size_kb_not_positive(size):
     with pytest.raises(ValueError) as e:
         mp.set_cache_size_kb(size)
-    assert e.match('must be positive')
+    assert e.match('must be non-negative')
 
 
 @given(st.one_of(st.characters(),

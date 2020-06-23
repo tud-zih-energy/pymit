@@ -713,6 +713,7 @@ histogram_bin_edges(PyObject *self, PyObject *args, PyObject *kwds) {
     }
 
     /* obtain ndarray behind `a` */
+    // TODO not necessary when bins is present as array
     a_np = reinterpret_cast< PyArrayObject* >(PyArray_FROM_OTF(a, NPY_DOUBLE, NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED));
     if (!a_np)
         goto fail;
@@ -1032,9 +1033,9 @@ set_cache_size_kb(PyObject *self, PyObject *args, PyObject *kwds) {
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "n", kwlist, &size))
         goto fail;
 
-    if (size < 1)
+    if (size < 0)
     {
-        PyErr_SetString(PyExc_ValueError, "`size` must be positive");
+        PyErr_SetString(PyExc_ValueError, "`size` must be non-negative");
         goto fail;
     }
 
