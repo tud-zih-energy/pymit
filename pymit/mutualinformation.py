@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 
 import pymit
@@ -37,8 +39,8 @@ def I(X, Y, bins):
     for i in range(xbins):
         for j in range(ybins):
             if p_x[i] > 0 and p_y[j] > 0 and p_xy[i, j] > 0:
-                I_ += p_xy[i, j] * np.log(p_xy[i, j] / (p_x[i] * p_y[j]))
-    I_ = I_ / np.log(base)
+                I_ += p_xy[i, j] * math.log(p_xy[i, j] / (p_x[i] * p_y[j]))
+    I_ = I_ / math.log(base)
     return I_
 
 
@@ -81,6 +83,6 @@ def I_cond(X, Y, Z, bins):
         for j in range(ybins):
             for k in range(zbins):
                 if p_xyz[i, j, k] > 0 and p_xz[i, k] > 0 and p_yz[j, k] > 0 and p_z[k] > 0:
-                    I += p_xyz[i, j, k] * np.log((p_z[k] * p_xyz[i, j, k]) / (p_xz[i, k] * p_yz[j, k]))
-    I = I / np.log(base)
+                    I += p_xyz[i, j, k] * math.log((p_z[k] * p_xyz[i, j, k]) / (p_xz[i, k] * p_yz[j, k]))
+    I = I / math.log(base)
     return I

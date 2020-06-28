@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 
 import pymit
@@ -21,8 +23,8 @@ def H(X, bins):
     H_ = 0
     for p in p_x:
         if p > 0:
-            H_ -= p * np.log(p)
-    H_ = H_ / np.log(bins)
+            H_ -= p * math.log(p)
+    H_ = H_ / math.log(bins)
     return H_
 
 
@@ -57,6 +59,6 @@ def H_cond(X, Y, bins):
         for j in range(xbins):
             if p_xy[j, i] > 0:
                 p_cond = p_xy[j, i] / p_y[i]
-                H -= p_y[i] * p_cond * np.log(p_cond)
-    H = H / np.log(base)
+                H -= p_y[i] * p_cond * math.log(p_cond)
+    H = H / math.log(base)
     return H
