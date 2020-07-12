@@ -1049,6 +1049,188 @@ fail:
     return NULL;
 }
 
+static PyObject*
+_I_impl(PyObject *self, PyObject *args, PyObject *kwds) {
+    /* input */
+    PyObject *p_xy = nullptr;
+    PyObject *p_x = nullptr;
+    PyObject *p_y = nullptr;
+    PyObject *xbins = nullptr;
+    PyObject *ybins = nullptr;
+    PyObject *base = nullptr;
+    static char *kwlist[] = {"p_xy", "p_x", "p_y", "xbins", "ybins", "base", NULL};
+
+    /* output */
+    double I_ = 0.;
+
+    /* helpers */
+    long xbins_;
+    long ybins_;
+    long base_;
+    PyArrayObject *p_xy_np = nullptr;
+    PyArrayObject *p_x_np = nullptr;
+    PyArrayObject *p_y_np = nullptr;
+    double *p_xy_data = nullptr;
+    double *p_x_data = nullptr;
+    double *p_y_data = nullptr;
+
+    /* argument parsing */
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOOOOO", kwlist, &p_xy, &p_x, &p_y, &xbins, &ybins, &base))
+        goto fail;
+
+    xbins_ = PyLong_AsLong(xbins);
+    if(xbins_ == -1)
+        goto fail;
+    ybins_ = PyLong_AsLong(ybins);
+    if(ybins_ == -1)
+        goto fail;
+    base_ = PyLong_AsLong(base);
+    if(base_ == -1)
+        goto fail;
+
+    /* obtain ndarray behind `p_xy` */
+    p_xy_np = reinterpret_cast< PyArrayObject* >(PyArray_FROM_OTF(p_xy, NPY_DOUBLE, NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED));
+    if (!p_xy_np)
+        goto fail;
+    /* obtain ndarray behind `p_x` */
+    p_x_np = reinterpret_cast< PyArrayObject* >(PyArray_FROM_OTF(p_x, NPY_DOUBLE, NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED));
+    if (!p_x_np)
+        goto fail;
+    /* obtain ndarray behind `p_y` */
+    p_y_np = reinterpret_cast< PyArrayObject* >(PyArray_FROM_OTF(p_y, NPY_DOUBLE, NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED));
+    if (!p_y_np)
+        goto fail;
+
+    p_xy_data = (double *)PyArray_DATA(p_xy_np);
+    p_x_data = (double *)PyArray_DATA(p_x_np);
+    p_y_data = (double *)PyArray_DATA(p_y_np);
+    for (long x = 0; x < xbins_; ++x)
+    {
+        double const x_ = *(p_x_data + x);
+        if (x_ > 0)
+        {
+            #pragma omp parallel for schedule(dynamic) reduction(+: I_)
+            for (long y = 0; y < ybins_; ++y)
+            {
+                double const xy_ = *(p_xy_data + x * ybins_ + y);
+                double const y_ = *(p_y_data + y);
+                if(xy_ > 0 && y_ > 0)
+                    I_ += xy_ * std::log(xy_ / (x_ * y_));
+            }
+        }
+    }
+    I_ /= std::log(base_);
+
+success:
+    Py_DECREF(p_y_np);
+    Py_DECREF(p_x_np);
+    Py_DECREF(p_xy_np);
+    return Py_BuildValue("d", I_);
+
+fail:
+    Py_XDECREF(p_y_np);
+    Py_XDECREF(p_x_np);
+    Py_XDECREF(p_xy_np);
+    return NULL;
+}
+
+static PyObject*
+_I_cond_impl(PyObject *self, PyObject *args, PyObject *kwds) {
+    /* input */
+    PyObject *p_xyz = nullptr;
+    PyObject *p_xz = nullptr;
+    PyObject *p_yz = nullptr;
+    PyObject *p_z = nullptr;
+    PyObject *xbins = nullptr;
+    PyObject *ybins = nullptr;
+    PyObject *zbins = nullptr;
+    PyObject *base = nullptr;
+    static char *kwlist[] = {"p_xyz", "p_xz", "p_yz", "p_z", "xbins", "ybins", "zbins", "base", NULL};
+
+    /* output */
+    double I_ = 0.;
+
+    /* helpers */
+    long xbins_;
+    long ybins_;
+    long zbins_;
+    long base_;
+    PyArrayObject *p_xyz_np = nullptr;
+    PyArrayObject *p_xz_np = nullptr;
+    PyArrayObject *p_yz_np = nullptr;
+    PyArrayObject *p_z_np = nullptr;
+    double *p_xyz_data = nullptr;
+    double *p_xz_data = nullptr;
+    double *p_yz_data = nullptr;
+    double *p_z_data = nullptr;
+
+    /* argument parsing */
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOOOOOOO", kwlist, &p_xyz, &p_xz, &p_yz, &p_z, &xbins, &ybins, &zbins, &base))
+        goto fail;
+
+    xbins_ = PyLong_AsLong(xbins);
+    if(xbins_ == -1)
+        goto fail;
+    ybins_ = PyLong_AsLong(ybins);
+    if(ybins_ == -1)
+        goto fail;
+    zbins_ = PyLong_AsLong(zbins);
+    if(zbins_ == -1)
+        goto fail;
+    base_ = PyLong_AsLong(base);
+    if(base_ == -1)
+        goto fail;
+
+    /* obtain ndarray behind `p_xyz` */
+    p_xyz_np = reinterpret_cast< PyArrayObject* >(PyArray_FROM_OTF(p_xyz, NPY_DOUBLE, NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED));
+    if (!p_xyz_np)
+        goto fail;
+    /* obtain ndarray behind `p_xz` */
+    p_xz_np = reinterpret_cast< PyArrayObject* >(PyArray_FROM_OTF(p_xz, NPY_DOUBLE, NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED));
+    if (!p_xz_np)
+        goto fail;
+    /* obtain ndarray behind `p_yz` */
+    p_yz_np = reinterpret_cast< PyArrayObject* >(PyArray_FROM_OTF(p_yz, NPY_DOUBLE, NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED));
+    if (!p_yz_np)
+        goto fail;
+    /* obtain ndarray behind `p_z` */
+    p_z_np = reinterpret_cast< PyArrayObject* >(PyArray_FROM_OTF(p_z, NPY_DOUBLE, NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED));
+    if (!p_z_np)
+        goto fail;
+
+    p_xyz_data = (double *)PyArray_DATA(p_xyz_np);
+    p_xz_data = (double *)PyArray_DATA(p_xz_np);
+    p_yz_data = (double *)PyArray_DATA(p_yz_np);
+    p_z_data = (double *)PyArray_DATA(p_z_np);
+    #pragma omp parallel for collapse(3) schedule(dynamic) reduction(+: I_)
+    for (long x = 0; x < xbins_; ++x)
+        for (long y = 0; y < ybins_; ++y)
+            for (long z = 0; z < zbins_; ++z)
+            {
+                double const xyz_ = *(p_xyz_data + x * ybins_ * zbins_ + y * zbins_ + z);
+                double const xz_ = *(p_xz_data + x * zbins_ + z);
+                double const yz_ = *(p_yz_data + y * zbins_ + z);
+                double const z_ = *(p_z_data + z);
+                if(xyz_ > 0 && xz_ > 0 && yz_ > 0 && z_ > 0)
+                    I_ += xyz_ * std::log((z_ * xyz_) / (xz_ * yz_));
+            }
+    I_ /= std::log(base_);
+
+success:
+    Py_DECREF(p_z_np);
+    Py_DECREF(p_yz_np);
+    Py_DECREF(p_xz_np);
+    Py_DECREF(p_xyz_np);
+    return Py_BuildValue("d", I_);
+
+fail:
+    Py_XDECREF(p_z_np);
+    Py_XDECREF(p_yz_np);
+    Py_XDECREF(p_xz_np);
+    Py_XDECREF(p_xyz_np);
+    return NULL;
+}
+
 PyMethodDef methods[] = {
     {
         "histogram",
@@ -1089,6 +1271,18 @@ PyMethodDef methods[] = {
     {
         "set_cache_size_kb",
         (PyCFunction) set_cache_size_kb,
+        METH_VARARGS | METH_KEYWORDS,
+        "Method docstring"
+    },
+    {
+        "_I_impl",
+        (PyCFunction) _I_impl,
+        METH_VARARGS | METH_KEYWORDS,
+        "Method docstring"
+    },
+    {
+        "_I_cond_impl",
+        (PyCFunction) _I_cond_impl,
         METH_VARARGS | METH_KEYWORDS,
         "Method docstring"
     },

@@ -1,7 +1,5 @@
 import math
-
 import numpy as np
-
 import pymit
 
 LOG_BASE = 2
@@ -35,6 +33,10 @@ def I(X, Y, bins):
     p_x, _ = pymit._lib.histogram(X, bins=xbins)
     p_x = p_x / len(X)
 
+    return pymit._lib._I_impl(p_xy, p_x, p_y, xbins, ybins, base)
+
+
+def _I_impl(p_xy, p_x, p_y, xbins, ybins, base):
     I_ = 0
     for i in range(xbins):
         for j in range(ybins):
@@ -78,11 +80,15 @@ def I_cond(X, Y, Z, bins):
     p_z, _ = pymit._lib.histogram(Z, bins=zbins)
     p_z = p_z / len(Z)
 
-    I = 0
+    return pymit._lib._I_cond_impl(p_xyz, p_xz, p_yz, p_z, xbins, ybins, zbins, base)
+
+
+def _I_cond_impl(p_xyz, p_xz, p_yz, p_z, xbins, ybins, zbins, base):
+    I_ = 0
     for i in range(xbins):
         for j in range(ybins):
             for k in range(zbins):
                 if p_xyz[i, j, k] > 0 and p_xz[i, k] > 0 and p_yz[j, k] > 0 and p_z[k] > 0:
-                    I += p_xyz[i, j, k] * math.log((p_z[k] * p_xyz[i, j, k]) / (p_xz[i, k] * p_yz[j, k]))
-    I = I / math.log(base)
-    return I
+                    I_ += p_xyz[i, j, k] * math.log((p_z[k] * p_xyz[i, j, k]) / (p_xz[i, k] * p_yz[j, k]))
+    I_ = I_ / math.log(base)
+    return I_

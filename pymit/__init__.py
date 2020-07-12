@@ -1,10 +1,10 @@
 from .entropy import *
-from .mutualinformation import *
+from .mutualinformation import I, I_cond
 
 import numpy as np
 import mephisto as mp
 
-_lib = np
+_lib = None
 
 
 def _set_library(lib):
@@ -14,7 +14,14 @@ def _set_library(lib):
     global _lib
     if lib in ['np', 'numpy']:
         _lib = np
+        from .mutualinformation import _I_impl, _I_cond_impl
+        _lib._I_impl = _I_impl
+        _lib._I_cond_impl = _I_cond_impl
+        del _I_impl, _I_cond_impl
     elif lib in ['mp', 'mephisto']:
         _lib = mp
     else:
         raise ValueError('Please specifiy lib as one of [np, numpy, mp, mephisto]')
+
+
+_set_library('numpy')
