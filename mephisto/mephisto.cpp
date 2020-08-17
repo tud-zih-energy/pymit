@@ -1104,19 +1104,16 @@ _I_impl(PyObject *self, PyObject *args, PyObject *kwds) {
     p_xy_data = (double *)PyArray_DATA(p_xy_np);
     p_x_data = (double *)PyArray_DATA(p_x_np);
     p_y_data = (double *)PyArray_DATA(p_y_np);
+    #pragma omp parallel for collapse(2) schedule(dynamic) reduction(+: I_)
     for (long x = 0; x < xbins_; ++x)
     {
-        double const x_ = *(p_x_data + x);
-        if (x_ > 0)
+        for (long y = 0; y < ybins_; ++y)
         {
-            #pragma omp parallel for schedule(dynamic) reduction(+: I_)
-            for (long y = 0; y < ybins_; ++y)
-            {
-                double const xy_ = *(p_xy_data + x * ybins_ + y);
-                double const y_ = *(p_y_data + y);
-                if(xy_ > 0 && y_ > 0)
-                    I_ += xy_ * std::log(xy_ / (x_ * y_));
-            }
+            double const xy_ = *(p_xy_data + x * ybins_ + y);
+            double const x_ = *(p_x_data + x);
+            double const y_ = *(p_y_data + y);
+            if(xy_ > 0 && x_ > 0 && y_ > 0)
+                I_ += xy_ * std::log(xy_ / (x_ * y_));
         }
     }
     I_ /= std::log(base_);
