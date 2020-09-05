@@ -1,3 +1,4 @@
+import gc
 import inspect
 import os
 import shutil
@@ -45,24 +46,20 @@ def madelon(num_examples=None, num_features=None):
 
 
 def _gen_useful(fun, n, correlation, zeros, value_range=(0, 1)):
+    parameters = len(inspect.signature(fun).parameters)
+    rng = np.random.default_rng()
+    value_range_min, value_range_max = value_range
+
+    if correlation and len(correlation) != parameters:
+        raise ValueError("If \"correlation\" is given, there must be a correlation for each feature")
+    if zeros and len(zeros) != parameters:
+        raise ValueError("If \"zeros\" is given, there must be a zeros for each feature")
+
+    param = rng.uniform(value_range_min, value_range_max, (parameters, n))
+
     if correlation is None and zeros is None:
-        parameters = len(inspect.signature(fun).parameters)
-        rng = np.random.default_rng()
-        value_range_min, value_range_max = value_range
-        param = (rng.uniform(value_range_min, value_range_max, n),)
-        for elem in range(1, parameters):
-            param = (*param, rng.uniform(value_range_min, value_range_max, n))
         return fun(*param), param
     elif correlation is not None:
-        parameters = len(inspect.signature(fun).parameters)
-        if len(correlation) != parameters:
-            raise ValueError("If \"correlation\" is given, there must be a correlation for each feature")
-
-        rng = np.random.default_rng()
-        value_range_min, value_range_max = value_range
-        param = (rng.uniform(value_range_min, value_range_max, n),)
-        for elem in range(1, parameters):
-            param = (*param, rng.uniform(value_range_min, value_range_max, n))
         Y = fun(*param)
         for i, cor in enumerate(correlation):
             for j in range(n):
@@ -70,14 +67,6 @@ def _gen_useful(fun, n, correlation, zeros, value_range=(0, 1)):
                     param[i][j] = rng.uniform(value_range_min, value_range_max)
         return Y, param
     elif zeros is not None:
-        parameters = len(inspect.signature(fun).parameters)
-        if len(zeros) != parameters:
-            raise ValueError("If \"zeros\" is given, there must be a zeros for each feature")
-        rng = np.random.default_rng()
-        value_range_min, value_range_max = value_range
-        param = (rng.uniform(value_range_min, value_range_max, n),)
-        for elem in range(1, parameters):
-            param = (*param, rng.uniform(value_range_min, value_range_max, n))
         Y = fun(*param)
         for i, zero in enumerate(zeros):
             for j in range(n):
@@ -104,18 +93,14 @@ def _gen_repeated(X, num_repeat_feat):
 def _gen_useless_uniform(features, n, value_range=(0, 1)):
     value_range_min, value_range_max = value_range
     rng = np.random.default_rng()
-    param = (rng.uniform(value_range_min, value_range_max, n),)
-    for elem in range(1, features):
-        param = (*param, rng.uniform(value_range_min, value_range_max, n))
+    param = rng.uniform(value_range_min, value_range_max, (features, n))
     return param
 
 
 def _gen_useless_norm(features, n, value_range=(0, 1)):
     mean, std = value_range
     rng = np.random.default_rng()
-    param = (rng.normal(mean, std, n),)
-    for elem in range(1, features):
-        param = (*param, rng.normal(mean, std, n))
+    param = rng.normal(mean, std, (features, n))
     return param
 
 
@@ -128,28 +113,34 @@ def _gen_features(fun, useless, redundant, repeated, n, correlation=None, zeros=
     @param repeated repeated features drawn from useful and redundant
     @param correlation list with percentage of correlated for each relevant features, None if 100% for all.
     """
-    labels, data = _gen_useful(fun, n, correlation, zeros, value_range)
-    data = np.asarray(data)
+    useful = len(inspect.signature(fun).parameters)
+    data = np.empty((useless + redundant + repeated + useful, n))
+    index = 0
 
-    C, B = _gen_redundant(data, redundant)
-    data = np.concatenate((data, C))
+    labels, data[index:index + useful] = _gen_useful(fun, n, correlation, zeros, value_range)
+    index += useful
 
-    C, ind = _gen_repeated(data, repeated)
-    data = np.concatenate((data, C))
+    data[index:index + redundant], B = _gen_redundant(data[:index], redundant)
+    index += redundant
 
-    lower, upper = data.min(), data.max()
-    mean, std = np.mean(data), np.std(data)
+    data[index:index + repeated], ind = _gen_repeated(data[:index], repeated)
+    index += repeated
 
-    if useless != 0:
-        C = _gen_useless_uniform(useless//2, n, (lower, upper))
-        data = np.concatenate((data, C))
+    lower, upper = data[:index].min(), data[:index].max()
+
+    data[index:index + useless//2] = _gen_useless_uniform(useless//2, n, (lower, upper))
+    index += useless//2
 
     if useless > 1:
-        C = _gen_useless_norm(useless//2, n, (mean, std))
-        data = np.concatenate((data, C))
+        mean, std = np.mean(data[:index]), np.std(data[:index])
+
+        data[index:index + useless//2] = _gen_useless_norm(useless//2, n, (mean, std))
+        index += useless//2
 
         if useless % 2 != 0:
-            C = _gen_useless_uniform(useless % 2, n, (lower, upper))
-            data = np.concatenate((data, C))
-
-    return labels, data.transpose(), B.transpose(), ind
+            data[index:index + useless % 2] = _gen_useless_uniform(useless % 2, n, (lower, upper))
+            index += useless % 2
+    
+    ret = labels, data.transpose(), B.transpose(), ind
+    gc.collect()
+    return ret
