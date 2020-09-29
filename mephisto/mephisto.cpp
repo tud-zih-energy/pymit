@@ -1228,6 +1228,110 @@ fail:
     return NULL;
 }
 
+static PyObject *
+_transform3D(PyObject *self, PyObject *args, PyObject *kwds)
+{
+    /* input */
+    PyObject *x = nullptr;
+    PyObject *y = nullptr;
+    PyObject *z = nullptr;
+    static char *kwlist[] = {"X", "Y", "Z", NULL};
+
+    /* output */
+    PyArrayObject *xyz_np = nullptr;
+
+    /* helpers */
+    PyArrayObject *x_np = nullptr;
+    PyArrayObject *y_np = nullptr;
+    PyArrayObject *z_np = nullptr;
+    npy_intp length;
+    npy_intp XYZ_dims[2];
+    double *x_data = nullptr;
+    double *y_data = nullptr;
+    double *z_data = nullptr;
+    double *xyz_data = nullptr;
+
+    /* argument parsing */
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "OOO", kwlist, &x, &y, &z))
+        goto fail;
+
+    /* obtain ndarray behind `X` */
+    x_np = reinterpret_cast<PyArrayObject *>(PyArray_FROM_OTF(x, NPY_DOUBLE, NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED));
+    if (!x_np)
+        goto fail;
+    if (PyArray_NDIM(x_np) != 1)
+    {
+        PyErr_SetString(PyExc_ValueError, "`X` array must be 1D");
+        goto fail;
+    }
+    /* obtain ndarray behind `Y` */
+    y_np = reinterpret_cast<PyArrayObject *>(PyArray_FROM_OTF(y, NPY_DOUBLE, NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED));
+    if (!y_np)
+        goto fail;
+    if (PyArray_NDIM(y_np) != 1)
+    {
+        PyErr_SetString(PyExc_ValueError, "`Y` array must be 1D");
+        goto fail;
+    }
+    /* obtain ndarray behind `Z` */
+    z_np = reinterpret_cast<PyArrayObject *>(PyArray_FROM_OTF(z, NPY_DOUBLE, NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED));
+    if (!z_np)
+        goto fail;
+    if (PyArray_NDIM(z_np) != 1)
+    {
+        PyErr_SetString(PyExc_ValueError, "`Y` array must be 1D");
+        goto fail;
+    }
+
+    length = PyArray_SIZE(x_np);
+    if (length != PyArray_SIZE(y_np) || length != PyArray_SIZE(z_np))
+    {
+        PyErr_SetString(PyExc_ValueError, "X, Y and Z must be of identical length");
+        goto fail;
+    }
+
+    XYZ_dims[0] = length;
+    XYZ_dims[1] = 3;
+    xyz_np = reinterpret_cast<PyArrayObject *>(PyArray_EMPTY(2, XYZ_dims, NPY_DOUBLE, 0));
+    if (!xyz_np)
+        goto fail;
+
+    /* workwörk */
+    x_data = (double *)PyArray_DATA(x_np);
+    if (!x_data)
+        goto fail;
+    y_data = (double *)PyArray_DATA(y_np);
+    if (!y_data)
+        goto fail;
+    z_data = (double *)PyArray_DATA(z_np);
+    if (!z_data)
+        goto fail;
+    xyz_data = (double *)PyArray_DATA(xyz_np);
+    if (!xyz_data)
+        goto fail;
+
+    #pragma omp parallel for simd aligned(x_data) aligned(y_data) aligned(z_data) aligned(xyz_data)
+    for (npy_intp i = 0; i < length; ++i)
+    {
+        xyz_data[i * 3] = x_data[i];
+        xyz_data[i * 3 + 1] = y_data[i];
+        xyz_data[i * 3 + 2] = z_data[i];
+    }
+
+success:
+    Py_DECREF(z_np);
+    Py_DECREF(y_np);
+    Py_DECREF(x_np);
+    return Py_BuildValue("N", xyz_np);
+
+fail:
+    Py_XDECREF(xyz_np);
+    Py_XDECREF(z_np);
+    Py_XDECREF(y_np);
+    Py_XDECREF(x_np);
+    return NULL;
+}
+
 PyMethodDef methods[] = {
     {
         "histogram",
@@ -1280,6 +1384,12 @@ PyMethodDef methods[] = {
     {
         "_I_cond_impl",
         (PyCFunction) _I_cond_impl,
+        METH_VARARGS | METH_KEYWORDS,
+        "Method docstring"
+    },
+    {
+        "_transform3D",
+        (PyCFunction) _transform3D,
         METH_VARARGS | METH_KEYWORDS,
         "Method docstring"
     },

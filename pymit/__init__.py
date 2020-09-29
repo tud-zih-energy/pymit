@@ -14,10 +14,11 @@ def _set_library(lib):
     global _lib
     if lib in ['np', 'numpy']:
         _lib = np
-        from .mutualinformation import _I_impl, _I_cond_impl
+        from .mutualinformation import _I_impl, _I_cond_impl, _transform3D
         _lib._I_impl = _I_impl
         _lib._I_cond_impl = _I_cond_impl
-        del _I_impl, _I_cond_impl
+        _lib._transform3D = _transform3D
+        del _I_impl, _I_cond_impl, _transform3D
     elif lib in ['mp', 'mephisto']:
         _lib = mp
     else:

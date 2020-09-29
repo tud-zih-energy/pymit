@@ -94,3 +94,16 @@ def test_jmi(library, madelon):
         selected_features.append(f)
 
     assert np.array_equal(expected_features, selected_features)
+
+def test_transform3D():
+    X = np.arange(start=0, stop=10)
+    Y = np.arange(start=10, stop=20)
+    Z = np.arange(start=20, stop=30)
+    pymit._set_library('np')
+    XYZ_np = pymit._lib._transform3D(X, Y, Z).astype('float64')
+    pymit._set_library('mp')
+    XYZ_mp = pymit._lib._transform3D(X, Y, Z)
+    assert XYZ_np.dtype == XYZ_mp.dtype
+    assert XYZ_np.ndim == XYZ_mp.ndim
+    assert XYZ_np.shape == XYZ_mp.shape
+    assert np.array_equal(XYZ_np, XYZ_mp)

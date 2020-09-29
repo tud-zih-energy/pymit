@@ -70,7 +70,7 @@ def I_cond(X, Y, Z, bins):
         zbins = bins
         base = bins
 
-    XYZ = np.transpose(np.array([X, Y, Z]))
+    XYZ = pymit._lib._transform3D(X, Y, Z)
     p_xyz, _ = pymit._lib.histogramdd(XYZ, bins=[xbins, ybins, zbins])
     p_xyz = p_xyz / len(Z)
     p_xz, _, _ = pymit._lib.histogram2d(X, Z, bins=[xbins, zbins])
@@ -81,6 +81,10 @@ def I_cond(X, Y, Z, bins):
     p_z = p_z / len(Z)
 
     return pymit._lib._I_cond_impl(p_xyz, p_xz, p_yz, p_z, xbins, ybins, zbins, base)
+
+
+def _transform3D(X, Y, Z):
+    return np.ascontiguousarray(np.array([X, Y, Z]).transpose())
 
 
 def _I_cond_impl(p_xyz, p_xz, p_yz, p_z, xbins, ybins, zbins, base):
