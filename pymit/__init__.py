@@ -25,4 +25,4 @@ def _set_library(lib):
         raise ValueError('Please specifiy lib as one of [np, numpy, mp, mephisto]')
 
 
-_set_library('numpy')
+_set_library('mephisto')

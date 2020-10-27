@@ -1410,7 +1410,7 @@ PyInit_mephisto(void) {
     PyObject *ret = PyModule_Create(&module);
     import_array();
 
-    cache_size_kb = 512;
+    cache_size_kb = 128;
     env_cache_size_kb = std::getenv("PYMIT_CACHE_SIZE_KB");
     if (env_cache_size_kb)
     {
