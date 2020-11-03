@@ -7,6 +7,8 @@
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #include <numpy/arrayobject.h>
 
+#define THREAD_CHUNK_SIZE   4096
+
 static Py_ssize_t cache_size_kb;
 
 bool
@@ -109,7 +111,7 @@ histogram(PyObject *self, PyObject *args, PyObject *kwds) {
             bin_priv = new int64_t[hist_length];
             for (npy_intp i = 0; i < hist_length; ++i)
                 bin_priv[i] = 0;
-            #pragma omp parallel for simd aligned(a_data) reduction(+: bin_priv[0:hist_length])
+            #pragma omp parallel for simd schedule(static, THREAD_CHUNK_SIZE) aligned(a_data) reduction(+: bin_priv[0:hist_length])
             for (npy_intp i = 0; i < a_length; ++i) {
                 auto bin = static_cast< npy_intp >((a_data[i] - a_min) / hist_bin_width);
                 auto idx = (bin < hist_length-1) ? bin : hist_length-1;
@@ -119,7 +121,7 @@ histogram(PyObject *self, PyObject *args, PyObject *kwds) {
                 hist_data[i] = bin_priv[i];
         } else // histogram likely spills to higher level caches or RAM - use shared histogram
         {
-            #pragma omp parallel for
+            #pragma omp parallel for schedule(static, THREAD_CHUNK_SIZE)
             for (npy_intp i = 0; i < a_length; ++i) {
                 auto bin = static_cast< npy_intp >((a_data[i] - a_min) / hist_bin_width);
                 auto idx = (bin < hist_length-1) ? bin : hist_length-1;
@@ -321,7 +323,7 @@ histogram2d(PyObject *self, PyObject *args, PyObject *kwds) {
     } else
     {
         // TODO might be more efficient to split this loop into x and y
-        #pragma omp parallel for simd aligned(x_data, y_data) reduction(min: xmin) reduction(max: xmax) reduction(min: ymin) reduction(max: ymax)
+        #pragma omp parallel for simd schedule(static, THREAD_CHUNK_SIZE) aligned(x_data, y_data) reduction(min: xmin) reduction(max: xmax) reduction(min: ymin) reduction(max: ymax)
         for (npy_intp i = 0; i < x_length; ++i)
         {
             double const x_tmp = x_data[i];
@@ -364,7 +366,7 @@ histogram2d(PyObject *self, PyObject *args, PyObject *kwds) {
             bin_priv = new int64_t[H_length];
             for (npy_intp i = 0; i < H_length; ++i)
                 bin_priv[i] = 0;
-            #pragma omp parallel for simd aligned(x_data, y_data) reduction(+: bin_priv[0:H_length])
+            #pragma omp parallel for simd schedule(static, THREAD_CHUNK_SIZE) aligned(x_data, y_data) reduction(+: bin_priv[0:H_length])
             for (npy_intp i = 0; i < x_length; ++i) {
                 auto xbin = static_cast< npy_intp >((x_data[i] - xmin) / xbin_width);
                 auto xidx = (xbin < H_shape[0]-1) ? xbin : H_shape[0]-1;
@@ -377,7 +379,7 @@ histogram2d(PyObject *self, PyObject *args, PyObject *kwds) {
                 H_data[i] = bin_priv[i];
         } else // histogram likely spills to higher level caches or RAM - use shared histogram
         {
-            #pragma omp parallel for
+            #pragma omp parallel for schedule(static, THREAD_CHUNK_SIZE)
             for (npy_intp i = 0; i < x_length; ++i) {
                 auto xbin = static_cast< npy_intp >((x_data[i] - xmin) / xbin_width);
                 auto xidx = (xbin < H_shape[0]-1) ? xbin : H_shape[0]-1;
@@ -573,7 +575,7 @@ histogramdd(PyObject *self, PyObject *args, PyObject *kwds) {
             sample_min[i] = std::numeric_limits< double >::infinity();
             sample_max[i] = -std::numeric_limits< double >::infinity();
         }
-        #pragma omp parallel for simd aligned(sample_data) reduction(min: sample_min[0:sample_D]) reduction(max: sample_max[0:sample_D])
+        #pragma omp parallel for simd schedule(static, THREAD_CHUNK_SIZE)  aligned(sample_data) reduction(min: sample_min[0:sample_D]) reduction(max: sample_max[0:sample_D])
         for (npy_intp i = 0; i < sample_length; ++i)
         {
             auto const dim = i % sample_D;
@@ -610,7 +612,7 @@ histogramdd(PyObject *self, PyObject *args, PyObject *kwds) {
             bin_priv = new int64_t[H_length];
             for (npy_intp i = 0; i < H_length; ++i)
                 bin_priv[i] = 0;
-            #pragma omp parallel for simd aligned(sample_data) reduction(+: bin_priv[0:H_length])
+            #pragma omp parallel for simd schedule(static, THREAD_CHUNK_SIZE) aligned(sample_data) reduction(+: bin_priv[0:H_length])
             for (npy_intp i = 0; i < sample_length; i += sample_D)
             {
                 npy_intp idx = 0;
@@ -628,7 +630,7 @@ histogramdd(PyObject *self, PyObject *args, PyObject *kwds) {
                 H_data[i] = bin_priv[i];
         } else // histogram likely spills to higher level caches or RAM - use shared histogram
         {
-            #pragma omp parallel for
+            #pragma omp parallel for schedule(static, THREAD_CHUNK_SIZE)
             for (npy_intp i = 0; i < sample_length; i += sample_D)
             {
                 npy_intp idx = 0;
@@ -818,7 +820,7 @@ digitize(PyObject *self, PyObject *args, PyObject *kwds) {
         goto fail;
     if (increasing && !right)
     {
-        #pragma omp parallel for
+        #pragma omp parallel for schedule(static, THREAD_CHUNK_SIZE)
         for (npy_intp i = 0; i < x_length; ++i)
         {
             auto const tmp = x_data[i];
@@ -833,14 +835,14 @@ digitize(PyObject *self, PyObject *args, PyObject *kwds) {
 
                 if (bins_data[bin] > tmp)
                     upper = bin;
-                else 
+                else
                     lower = bin + 1;
             }
             indices_data[i] = bin;
         }
     } else if (increasing && right)
     {
-        #pragma omp parallel for
+        #pragma omp parallel for schedule(static, THREAD_CHUNK_SIZE)
         for (npy_intp i = 0; i < x_length; ++i)
         {
             auto const tmp = x_data[i];
@@ -855,14 +857,14 @@ digitize(PyObject *self, PyObject *args, PyObject *kwds) {
 
                 if (bins_data[bin] >= tmp)
                     upper = bin;
-                else 
+                else
                     lower = bin;
             }
             indices_data[i] = bin;
         }
     } else if (!increasing && !right)
     {
-        #pragma omp parallel for
+        #pragma omp parallel for schedule(static, THREAD_CHUNK_SIZE)
         for (npy_intp i = 0; i < x_length; ++i)
         {
             auto const tmp = x_data[i];
@@ -877,14 +879,14 @@ digitize(PyObject *self, PyObject *args, PyObject *kwds) {
 
                 if (bins_data[bin] <= tmp)
                     upper = bin;
-                else 
+                else
                     lower = bin;
             }
             indices_data[i] = bin;
         }
     } else
     {
-        #pragma omp parallel for
+        #pragma omp parallel for schedule(static, THREAD_CHUNK_SIZE)
         for (npy_intp i = 0; i < x_length; ++i)
         {
             auto const tmp = x_data[i];
@@ -899,7 +901,7 @@ digitize(PyObject *self, PyObject *args, PyObject *kwds) {
 
                 if (bins_data[bin] < tmp)
                     upper = bin;
-                else 
+                else
                     lower = bin + 1;
             }
             indices_data[i] = bin;
@@ -991,7 +993,7 @@ histogram_bin_edges_impl(
         }
     } else
     {
-        #pragma omp parallel for simd aligned(a_data) reduction(min: a_min) reduction(max: a_max)
+        #pragma omp parallel for simd schedule(static, THREAD_CHUNK_SIZE) aligned(a_data) reduction(min: a_min) reduction(max: a_max)
         for (npy_intp i = 0; i < a_length; ++i)
         {
             double const tmp = a_data[i];
@@ -1104,7 +1106,7 @@ _I_impl(PyObject *self, PyObject *args, PyObject *kwds) {
     p_xy_data = (double *)PyArray_DATA(p_xy_np);
     p_x_data = (double *)PyArray_DATA(p_x_np);
     p_y_data = (double *)PyArray_DATA(p_y_np);
-    #pragma omp parallel for collapse(2) schedule(dynamic) reduction(+: I_)
+    #pragma omp parallel for schedule(static, THREAD_CHUNK_SIZE) collapse(2) reduction(+: I_)
     for (long x = 0; x < xbins_; ++x)
     {
         for (long y = 0; y < ybins_; ++y)
@@ -1199,7 +1201,7 @@ _I_cond_impl(PyObject *self, PyObject *args, PyObject *kwds) {
     p_xz_data = (double *)PyArray_DATA(p_xz_np);
     p_yz_data = (double *)PyArray_DATA(p_yz_np);
     p_z_data = (double *)PyArray_DATA(p_z_np);
-    #pragma omp parallel for collapse(3) schedule(dynamic) reduction(+: I_)
+    #pragma omp parallel for schedule(static, THREAD_CHUNK_SIZE) collapse(3) reduction(+: I_)
     for (long x = 0; x < xbins_; ++x)
         for (long y = 0; y < ybins_; ++y)
             for (long z = 0; z < zbins_; ++z)
@@ -1310,7 +1312,7 @@ _transform3D(PyObject *self, PyObject *args, PyObject *kwds)
     if (!xyz_data)
         goto fail;
 
-    #pragma omp parallel for simd aligned(x_data) aligned(y_data) aligned(z_data) aligned(xyz_data)
+    #pragma omp parallel for simd schedule(static, THREAD_CHUNK_SIZE) aligned(x_data) aligned(y_data) aligned(z_data) aligned(xyz_data)
     for (npy_intp i = 0; i < length; ++i)
     {
         xyz_data[i * 3] = x_data[i];
