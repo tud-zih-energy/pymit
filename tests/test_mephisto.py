@@ -227,7 +227,7 @@ def test_histogramdd_bins_scalar(bins):
     assert np.allclose(H_np, H_mp)
 
 
-@given(st.lists(st.integers(min_value=1, max_value=16), min_size=2, max_size=8))
+@given(st.lists(st.integers(min_value=1, max_value=16), min_size=2, max_size=3))
 def test_histogramdd_bins_array_of_scalars(bins):
     rng = np.random.RandomState(42)
     sample = rng.randn(1024*128//len(bins), len(bins))
