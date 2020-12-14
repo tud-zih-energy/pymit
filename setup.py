@@ -10,7 +10,7 @@ module = Extension('mephisto',
                    include_dirs=[np.get_include()],
                    extra_compile_args=['-O3', '-march=native', '-fopenmp', '-fPIC'],
                    #extra_compile_args=['-Og', '-g', '-fPIC'],
-                   extra_link_args=['-lgomp'],
+                   extra_link_args=['-fopenmp'],
                    optional=False)
 
 setup(
