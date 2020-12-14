@@ -1,3 +1,5 @@
+![Build & Test](https://github.com/tud-zih-energy/pymit/workflows/Build%20&%20Test/badge.svg)
+
 # pyMIToolbox
 
 The pyMIToolbox is inspired by the [MIToolbox](https://github.com/Craigacp/MIToolbox) and [FEAST](https://github.com/Craigacp/FEAST).
