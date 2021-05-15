@@ -772,16 +772,25 @@ digitize(PyObject *self, PyObject *args, PyObject *kwds) {
 
     /* argument parsing */
     if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO|p", kwlist, &x, &bins, &right))
+    {
+        PyErr_SetString(PyExc_ValueError, "Wrong Arguments");
         goto fail;
+    }
 
     /* obtain ndarray behind `x` */
     x_np = reinterpret_cast< PyArrayObject* >(PyArray_FROM_OTF(x, NPY_DOUBLE, NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED));
     if (!x_np)
+    {
+        PyErr_SetString(PyExc_ValueError, "PyArray_FROM_OTF failed for x_np");
         goto fail;
+    }
     /* obtain ndarray behind `bins` */
     bins_np = reinterpret_cast< PyArrayObject* >(PyArray_FROM_OTF(bins, NPY_DOUBLE, NPY_ARRAY_C_CONTIGUOUS | NPY_ARRAY_ALIGNED));
     if (!bins_np)
+    {
+        PyErr_SetString(PyExc_ValueError, "PyArray_FROM_OTF failed for bins_np");
         goto fail;
+    }
     if (PyArray_NDIM(bins_np) != 1)
     {
         PyErr_SetString(PyExc_ValueError, "`bins` must be 1d array");
